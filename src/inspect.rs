@@ -157,13 +157,13 @@ fn print_detail(
                     .column(&format!("{name}__min"))
                     .ok()
                     .and_then(|s| s.get(0).ok())
-                    .map(|v| strip_trailing_dot_zero(v.to_string()))
+                    .map(|v| strip_trailing_dot_zero(anyvalue_to_string(v)))
                     .unwrap_or_else(|| "null".to_string());
                 let max_str = stats_df
                     .column(&format!("{name}__max"))
                     .ok()
                     .and_then(|s| s.get(0).ok())
-                    .map(|v| strip_trailing_dot_zero(v.to_string()))
+                    .map(|v| strip_trailing_dot_zero(anyvalue_to_string(v)))
                     .unwrap_or_else(|| "null".to_string());
                 let null_count_i64 = stats_df
                     .column(&format!("{name}__null"))
@@ -272,6 +272,14 @@ fn get_logical_type_str(col: &ColumnDescriptor) -> Option<String> {
     None
 }
 
+fn anyvalue_to_string(v: AnyValue) -> String {
+    match v {
+        AnyValue::String(s) => s.to_string(),
+        AnyValue::StringOwned(s) => s.to_string(),
+        other => other.to_string(),
+    }
+}
+
 fn strip_trailing_dot_zero(s: String) -> String {
     if let Some(prefix) = s.strip_suffix(".0") {
         if prefix.parse::<i64>().is_ok() {
@@ -327,5 +335,31 @@ fn format_statistics(stats: &Statistics) -> String {
             "nulls={}",
             s.null_count_opt().unwrap_or(0)
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anyvalue_to_string_no_quotes_for_strings() {
+        let v = AnyValue::String("2024-01-01T00:00:00Z");
+        let s = anyvalue_to_string(v);
+        assert_eq!(s, "2024-01-01T00:00:00Z");
+        assert!(!s.starts_with('"'), "string values must not be quoted: {s}");
+    }
+
+    #[test]
+    fn anyvalue_to_string_integers_unchanged() {
+        let v = AnyValue::Int64(42);
+        assert_eq!(anyvalue_to_string(v), "42");
+    }
+
+    #[test]
+    fn strip_trailing_dot_zero_removes_suffix() {
+        assert_eq!(strip_trailing_dot_zero("42.0".into()), "42");
+        assert_eq!(strip_trailing_dot_zero("3.14".into()), "3.14");
+        assert_eq!(strip_trailing_dot_zero("2024-01-01T00:00:00Z".into()), "2024-01-01T00:00:00Z");
     }
 }

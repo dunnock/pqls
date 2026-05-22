@@ -21,58 +21,58 @@ use std::path::PathBuf;
     long_about = "Inspect Apache Parquet files\n\nExamples:\n  pqls foo.parquet                       # inspect\n  pqls --schema --json foo.parquet       # JSON schema for agents\n  pqls --ndjson --sample 100 foo.parquet # 100 random rows as NDJSON\n  pqls --csv --columns id,ts foo.parquet # project two columns to CSV\n  pqls --kv-meta foo.parquet             # key-value metadata\n  pqls -r /data/events/                  # list partitioned dataset"
 )]
 pub struct Cli {
-    #[arg(index = 1)]
+    #[arg(index = 1, help = "Path to a .parquet file or directory to inspect")]
     pub path: PathBuf,
 
-    #[arg(index = 2)]
+    #[arg(index = 2, help = "Second .parquet file for schema diff (required by --diff)")]
     pub path_b: Option<PathBuf>,
 
-    #[arg(long, conflicts_with_all = ["csv", "ndjson", "schema", "kv_meta", "partition_stats", "check", "sample", "head", "detail", "recursive", "quiet", "columns", "scan_stats", "deep"])]
+    #[arg(long, help = "Compare schemas of two files; exits 0 if identical, 1 if different. Requires two path arguments. Use --json for machine-readable output.", conflicts_with_all = ["csv", "ndjson", "schema", "kv_meta", "partition_stats", "check", "sample", "head", "detail", "recursive", "quiet", "columns", "scan_stats", "deep"])]
     pub diff: bool,
 
-    #[arg(short = 'd', long)]
+    #[arg(short = 'd', long, help = "Show per-row-group column statistics (min/max/nulls). Use with --scan-stats when the file has no embedded stats.")]
     pub detail: bool,
 
-    #[arg(short = 'r', long)]
+    #[arg(short = 'r', long, help = "Recurse into a directory and list all .parquet files; required by --partition-stats")]
     pub recursive: bool,
 
-    #[arg(long, conflicts_with_all = ["ndjson", "schema", "json", "kv_meta"])]
+    #[arg(long, help = "Dump rows as CSV to stdout. Combine with --head N to limit output or --columns to project.", conflicts_with_all = ["ndjson", "schema", "json", "kv_meta"])]
     pub csv: bool,
 
-    #[arg(long, value_name = "N")]
+    #[arg(long, value_name = "N", help = "Limit output to the first N rows (applies to --csv and --ndjson)")]
     pub head: Option<u64>,
 
-    #[arg(short = 'q', long)]
+    #[arg(short = 'q', long, help = "Suppress human-readable headers; emit tab-separated summary lines suitable for scripting")]
     pub quiet: bool,
 
-    #[arg(long, conflicts_with_all = ["csv", "ndjson", "sample"])]
+    #[arg(long, help = "Print schema only (column names and types). Add --json for a machine-readable JSON schema.", conflicts_with_all = ["csv", "ndjson", "sample"])]
     pub schema: bool,
 
-    #[arg(long, conflicts_with = "csv")]
+    #[arg(long, help = "Emit output as JSON (works with --schema, --kv-meta, --check, --partition-stats, --diff)", conflicts_with = "csv")]
     pub json: bool,
 
-    #[arg(long, conflicts_with_all = ["csv", "schema"])]
+    #[arg(long, help = "Stream rows as newline-delimited JSON (NDJSON). Combine with --sample or --head to limit output.", conflicts_with_all = ["csv", "schema"])]
     pub ndjson: bool,
 
-    #[arg(long, value_name = "N", value_parser = validate_sample, conflicts_with_all = ["schema", "csv"])]
+    #[arg(long, value_name = "N", value_parser = validate_sample, help = "Emit N randomly-sampled rows; requires --ndjson or --csv", conflicts_with_all = ["schema", "csv"])]
     pub sample: Option<u64>,
 
-    #[arg(long, value_name = "COLS")]
+    #[arg(long, value_name = "COLS", help = "Comma-separated list of column names to project (e.g. id,ts,value)")]
     pub columns: Option<String>,
 
-    #[arg(long = "kv-meta", conflicts_with_all = ["csv"])]
+    #[arg(long = "kv-meta", help = "Print Parquet key-value metadata (writer version, custom properties). Add --json for machine-readable output.", conflicts_with_all = ["csv"])]
     pub kv_meta: bool,
 
-    #[arg(long = "scan-stats")]
+    #[arg(long = "scan-stats", help = "When embedded row-group stats are absent, scan the full file to compute per-column min/max/nulls/n_distinct. Requires -d/--detail.")]
     pub scan_stats: bool,
 
-    #[arg(long = "partition-stats", conflicts_with_all = ["csv", "ndjson", "schema", "kv_meta", "check"])]
+    #[arg(long = "partition-stats", help = "Aggregate row counts and file sizes across a Hive-partitioned directory. Requires -r/--recursive.", conflicts_with_all = ["csv", "ndjson", "schema", "kv_meta", "check"])]
     pub partition_stats: bool,
 
-    #[arg(long, conflicts_with_all = ["csv", "ndjson", "schema", "kv_meta", "partition_stats"])]
+    #[arg(long, help = "Verify file integrity by reading the footer and all row groups. Exits 0 if valid, 1 on error. Add --deep to read all data pages.", conflicts_with_all = ["csv", "ndjson", "schema", "kv_meta", "partition_stats"])]
     pub check: bool,
 
-    #[arg(long, requires = "check")]
+    #[arg(long, help = "With --check: read every data page in addition to the footer (slower but catches corrupt column data)", requires = "check")]
     pub deep: bool,
 }
 
