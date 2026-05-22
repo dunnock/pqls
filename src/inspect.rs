@@ -127,7 +127,10 @@ fn print_detail(
     if all_no_stats {
         if scan_stats {
             eprintln!("warning: --scan-stats reads the full file");
+            eprintln!("scanning columns…");
+            let t0 = std::time::Instant::now();
             let mut stats_df = compute_scan_stats(path, columns)?;
+            eprintln!("scan completed in {:.1}s", t0.elapsed().as_secs_f64());
             let dt_cast: Vec<Expr> = stats_df
                 .schema()
                 .iter()

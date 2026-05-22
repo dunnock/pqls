@@ -88,6 +88,8 @@ fn validate_sample(s: &str) -> std::result::Result<u64, String> {
 fn main() -> Result<()> {
     let cli = Cli::try_parse().unwrap_or_else(|e| {
         let code = match e.kind() {
+            clap::error::ErrorKind::DisplayHelp
+            | clap::error::ErrorKind::DisplayVersion => 0,
             clap::error::ErrorKind::ArgumentConflict => 3,
             _ => 2,
         };

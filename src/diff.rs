@@ -125,7 +125,12 @@ pub fn emit_text(outcome: &DiffOutcome) {
 
 pub fn emit_json(outcome: &DiffOutcome) -> Result<()> {
     let json = match outcome {
-        DiffOutcome::Identical => serde_json::json!({"identical": true}),
+        DiffOutcome::Identical => serde_json::json!({
+            "identical": true,
+            "added": [],
+            "removed": [],
+            "changed": [],
+        }),
         DiffOutcome::Different { added, removed, changed, .. } => {
             serde_json::json!({
                 "identical": false,
