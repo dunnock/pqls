@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use arrow_ipc::{convert::fb_to_schema, root_as_message};
+use arrow_ipc::{convert::fb_to_schema, root_as_message, root_as_schema};
 use base64::Engine as _;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use std::collections::BTreeMap;
@@ -22,8 +22,30 @@ pub fn emit_text(path: &Path) -> Result<()> {
                     .decode(value_str)
                     .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(value_str));
                 if let Ok(bytes) = decoded {
-                    // Arrow IPC kv-meta stores a full IPC Message flatbuffer, not a bare Schema
-                    if let Ok(msg) = root_as_message(&bytes) {
+                    // Path 1: bare Schema flatbuffer (old Arrow IPC, pyarrow < 0.17)
+                    if let Ok(fbs_schema) = root_as_schema(&bytes) {
+                        let schema = fb_to_schema(fbs_schema);
+                        println!(
+                            "{}\t(decoded Arrow schema, {} fields)",
+                            kv.key,
+                            schema.fields().len()
+                        );
+                        for field in schema.fields() {
+                            let nullable = if field.is_nullable() { " [nullable]" } else { "" };
+                            println!("  {}: {}{}", field.name(), field.data_type(), nullable);
+                        }
+                        continue;
+                    }
+                    // Path 2: IPC Message envelope (pyarrow, Polars, Pandas, C++ Arrow, Spark)
+                    // Modern Arrow IPC prefixes the flatbuffer with a 4-byte continuation marker
+                    // (0xFFFFFFFF) and a 4-byte message size; the actual message starts at byte 8.
+                    let msg_bytes: &[u8] =
+                        if bytes.len() > 8 && bytes.starts_with(&[0xff, 0xff, 0xff, 0xff]) {
+                            &bytes[8..]
+                        } else {
+                            &bytes
+                        };
+                    if let Ok(msg) = root_as_message(msg_bytes) {
                         if let Some(ipc_schema) = msg.header_as_schema() {
                             let schema = fb_to_schema(ipc_schema);
                             println!(
@@ -39,6 +61,7 @@ pub fn emit_text(path: &Path) -> Result<()> {
                             continue;
                         }
                     }
+                    // Fallback: undecoded binary, report decoded byte count
                     println!("{}\t(binary, {} bytes)", kv.key, bytes.len());
                 } else {
                     println!("{}\t(binary, {} bytes)", kv.key, value_str.len());
