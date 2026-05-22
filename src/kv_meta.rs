@@ -33,7 +33,7 @@ pub fn emit_text(path: &Path) -> Result<()> {
                         continue;
                     }
                 }
-                println!("{}\t(binary, {} bytes, decode failed)", kv.key, value_str.len());
+                println!("{}\t(binary, {} bytes)", kv.key, value_str.len());
             } else {
                 println!("{}\t{}", kv.key, value_str);
             }

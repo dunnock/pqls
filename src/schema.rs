@@ -7,6 +7,13 @@ use std::fs::File;
 use std::io::stdout;
 use std::path::Path;
 
+pub fn format_field_type(col: &ColumnDescriptor) -> String {
+    match get_logical_type_str(col) {
+        Some(lt) => format!("{:?} {}", col.physical_type(), lt),
+        None => format!("{:?}", col.physical_type()),
+    }
+}
+
 pub fn get_logical_type_str(col: &ColumnDescriptor) -> Option<String> {
     // Try logical type first
     if let Some(lt) = col.logical_type() {

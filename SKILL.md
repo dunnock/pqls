@@ -47,10 +47,12 @@ diff <(pqls --schema a.parquet) <(pqls --schema b.parquet)
 
 # 4. Column projection
 pqls --csv --head 5 --columns col1,col2 file.parquet
+
+# 5. First N rows as NDJSON (deterministic, no --sample):
+pqls --ndjson --head 10 file.parquet
 ```
 
 ## Gotchas
-
 - `--json` requires `--schema` or `--kv-meta`; standalone is an error (exit 3).
 - `--sample` is non-deterministic (no seed). Do not rely on row order.
 - NDJSON: NaN/Inf → null. Binary columns → base64.
