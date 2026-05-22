@@ -25,6 +25,18 @@ if cli.diff && cli.path_b.is_none() {
 }
 ```
 
+**`--json` guard update** — `main.rs` currently validates:
+```rust
+if cli.json && !cli.schema && !cli.kv_meta && !cli.check && !cli.partition_stats {
+    eprintln!("error: --json requires --schema, --kv-meta, --check, or --partition-stats");
+    std::process::exit(3);
+}
+```
+Add `&& !cli.diff` so that `--diff --json` is accepted:
+```rust
+if cli.json && !cli.schema && !cli.kv_meta && !cli.check && !cli.partition_stats && !cli.diff {
+```
+
 ### 1.2 Type-String Canonicalisation
 
 The type string for a field is determined by the same logic as `schema::get_logical_type_str`:
@@ -167,6 +179,8 @@ pub fn emit_json(outcome: &DiffOutcome) -> Result<()>;
 ### 2.1 Gate
 
 Computed automatically whenever `--scan-stats` is passed alongside `--detail`. No new flag. The existing flow in `inspect.rs::print_detail` → `compute_scan_stats` already gathers per-column aggregates; `n_distinct` is an additional aggregate in the same query.
+
+**Context**: `compute_scan_stats` is only called when `all_no_stats` is true (the file was written without per-column footer statistics — common with Arrow/Spark writers). When footer stats do exist, they are shown per-row-group and `compute_scan_stats` is never invoked; `n_distinct` does not appear in that path. Acceptance criteria tests must use a file with no footer stats.
 
 ### 2.2 Implementation: `compute_scan_stats` in `src/inspect.rs`
 
