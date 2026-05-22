@@ -157,13 +157,13 @@ fn print_detail(
                     .column(&format!("{name}__min"))
                     .ok()
                     .and_then(|s| s.get(0).ok())
-                    .map(|v| v.to_string())
+                    .map(|v| strip_trailing_dot_zero(v.to_string()))
                     .unwrap_or_else(|| "null".to_string());
                 let max_str = stats_df
                     .column(&format!("{name}__max"))
                     .ok()
                     .and_then(|s| s.get(0).ok())
-                    .map(|v| v.to_string())
+                    .map(|v| strip_trailing_dot_zero(v.to_string()))
                     .unwrap_or_else(|| "null".to_string());
                 let null_str = stats_df
                     .column(&format!("{name}__null"))
@@ -250,6 +250,15 @@ fn get_logical_type_str(col: &ColumnDescriptor) -> Option<String> {
         return Some(format!("{:?}", ct));
     }
     None
+}
+
+fn strip_trailing_dot_zero(s: String) -> String {
+    if let Some(prefix) = s.strip_suffix(".0") {
+        if prefix.parse::<i64>().is_ok() {
+            return prefix.to_string();
+        }
+    }
+    s
 }
 
 fn format_statistics(stats: &Statistics) -> String {
