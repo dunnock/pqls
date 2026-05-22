@@ -8,18 +8,34 @@ use std::path::Path;
 
 use crate::schema;
 
+#[derive(Serialize, PartialEq, Clone)]
+pub struct TypeInfo {
+    pub physical: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logical: Option<String>,
+}
+
+impl TypeInfo {
+    fn display(&self) -> String {
+        match &self.logical {
+            Some(l) => format!("{} {}", self.physical, l),
+            None => self.physical.clone(),
+        }
+    }
+}
+
 #[derive(Serialize)]
 pub struct FieldDiff {
     pub name: String,
     #[serde(rename = "type")]
-    pub type_str: String,
+    pub type_info: TypeInfo,
 }
 
 #[derive(Serialize)]
 pub struct FieldChanged {
     pub name: String,
-    pub from: String,
-    pub to: String,
+    pub from: TypeInfo,
+    pub to: TypeInfo,
 }
 
 pub enum DiffOutcome {
@@ -36,19 +52,21 @@ pub fn diff_schemas(path_a: &Path, path_b: &Path) -> Result<DiffOutcome> {
     let fields_a = read_fields(path_a)?;
     let fields_b = read_fields(path_b)?;
 
-    let map_a: HashMap<String, String> = fields_a.iter().cloned().collect();
-    let map_b: HashMap<String, String> = fields_b.iter().cloned().collect();
+    let map_a: HashMap<&str, &TypeInfo> =
+        fields_a.iter().map(|(n, t)| (n.as_str(), t)).collect();
+    let map_b: HashMap<&str, &TypeInfo> =
+        fields_b.iter().map(|(n, t)| (n.as_str(), t)).collect();
 
-    let mut seen: HashSet<String> = HashSet::new();
+    let mut seen: HashSet<&str> = HashSet::new();
     let mut union_order: Vec<String> = Vec::new();
     for (name, _) in &fields_a {
-        union_order.push(name.clone());
-        seen.insert(name.clone());
+        if seen.insert(name.as_str()) {
+            union_order.push(name.clone());
+        }
     }
     for (name, _) in &fields_b {
-        if !seen.contains(name) {
+        if seen.insert(name.as_str()) {
             union_order.push(name.clone());
-            seen.insert(name.clone());
         }
     }
 
@@ -57,18 +75,18 @@ pub fn diff_schemas(path_a: &Path, path_b: &Path) -> Result<DiffOutcome> {
     let mut changed = Vec::new();
 
     for name in &union_order {
-        match (map_a.get(name), map_b.get(name)) {
-            (Some(type_a), None) => {
-                removed.push(FieldDiff { name: name.clone(), type_str: type_a.clone() });
+        match (map_a.get(name.as_str()), map_b.get(name.as_str())) {
+            (Some(ta), None) => {
+                removed.push(FieldDiff { name: name.clone(), type_info: (*ta).clone() });
             }
-            (None, Some(type_b)) => {
-                added.push(FieldDiff { name: name.clone(), type_str: type_b.clone() });
+            (None, Some(tb)) => {
+                added.push(FieldDiff { name: name.clone(), type_info: (*tb).clone() });
             }
-            (Some(type_a), Some(type_b)) if type_a != type_b => {
+            (Some(ta), Some(tb)) if ta != tb => {
                 changed.push(FieldChanged {
                     name: name.clone(),
-                    from: type_a.clone(),
-                    to: type_b.clone(),
+                    from: (*ta).clone(),
+                    to: (*tb).clone(),
                 });
             }
             _ => {}
@@ -87,20 +105,20 @@ pub fn emit_text(outcome: &DiffOutcome) {
         return;
     };
 
-    let removed_map: HashMap<&str, &str> =
-        removed.iter().map(|f| (f.name.as_str(), f.type_str.as_str())).collect();
-    let added_map: HashMap<&str, &str> =
-        added.iter().map(|f| (f.name.as_str(), f.type_str.as_str())).collect();
-    let changed_map: HashMap<&str, (&str, &str)> =
-        changed.iter().map(|f| (f.name.as_str(), (f.from.as_str(), f.to.as_str()))).collect();
+    let removed_map: HashMap<&str, &TypeInfo> =
+        removed.iter().map(|f| (f.name.as_str(), &f.type_info)).collect();
+    let added_map: HashMap<&str, &TypeInfo> =
+        added.iter().map(|f| (f.name.as_str(), &f.type_info)).collect();
+    let changed_map: HashMap<&str, (&TypeInfo, &TypeInfo)> =
+        changed.iter().map(|f| (f.name.as_str(), (&f.from, &f.to))).collect();
 
     for name in union_order {
-        if let Some(type_str) = removed_map.get(name.as_str()) {
-            println!("- {} {}", name, type_str);
-        } else if let Some(type_str) = added_map.get(name.as_str()) {
-            println!("+ {} {}", name, type_str);
+        if let Some(t) = removed_map.get(name.as_str()) {
+            println!("- {} {}", name, t.display());
+        } else if let Some(t) = added_map.get(name.as_str()) {
+            println!("+ {} {}", name, t.display());
         } else if let Some((from, to)) = changed_map.get(name.as_str()) {
-            println!("~ {} {} → {}", name, from, to);
+            println!("~ {} {} → {}", name, from.display(), to.display());
         }
     }
 }
@@ -111,9 +129,9 @@ pub fn emit_json(outcome: &DiffOutcome) -> Result<()> {
         DiffOutcome::Different { added, removed, changed, .. } => {
             serde_json::json!({
                 "identical": false,
-                "added":   added.iter().map(|f| serde_json::json!({"name": f.name, "type": f.type_str})).collect::<Vec<_>>(),
-                "removed": removed.iter().map(|f| serde_json::json!({"name": f.name, "type": f.type_str})).collect::<Vec<_>>(),
-                "changed": changed.iter().map(|f| serde_json::json!({"name": f.name, "from": f.from, "to": f.to})).collect::<Vec<_>>(),
+                "added":   added,
+                "removed": removed,
+                "changed": changed,
             })
         }
     };
@@ -122,7 +140,7 @@ pub fn emit_json(outcome: &DiffOutcome) -> Result<()> {
     Ok(())
 }
 
-fn read_fields(path: &Path) -> Result<Vec<(String, String)>> {
+fn read_fields(path: &Path) -> Result<Vec<(String, TypeInfo)>> {
     let file = File::open(path).with_context(|| format!("Cannot open {}", path.display()))?;
     let reader = SerializedFileReader::new(file)
         .with_context(|| format!("Cannot read parquet metadata from {}", path.display()))?;
@@ -132,7 +150,9 @@ fn read_fields(path: &Path) -> Result<Vec<(String, String)>> {
     let mut fields = Vec::new();
     for i in 0..schema_descr.num_columns() {
         let col = schema_descr.column(i);
-        fields.push((col.name().to_string(), schema::format_field_type(&col)));
+        let physical = format!("{:?}", col.physical_type());
+        let logical = schema::get_logical_type_str(&col);
+        fields.push((col.name().to_string(), TypeInfo { physical, logical }));
     }
     Ok(fields)
 }

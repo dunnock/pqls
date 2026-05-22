@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use arrow_ipc::{convert::fb_to_schema, root_as_schema};
+use arrow_ipc::{convert::fb_to_schema, root_as_message};
 use base64::Engine as _;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use std::collections::BTreeMap;
@@ -17,23 +17,32 @@ pub fn emit_text(path: &Path) -> Result<()> {
         for kv in kv_list {
             let value_str = kv.value.as_deref().unwrap_or("");
             if kv.key == "ARROW:schema" {
-                if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(value_str) {
-                    if let Ok(ipc_schema) = root_as_schema(&bytes) {
-                        let schema = fb_to_schema(ipc_schema);
-                        println!(
-                            "{}\t(decoded Arrow schema, {} fields)",
-                            kv.key,
-                            schema.fields().len()
-                        );
-                        for field in schema.fields() {
-                            let nullable =
-                                if field.is_nullable() { " [nullable]" } else { "" };
-                            println!("  {}: {}{}", field.name(), field.data_type(), nullable);
+                // Try STANDARD first, then URL_SAFE (some Spark writers use URL-safe encoding)
+                let decoded = base64::engine::general_purpose::STANDARD
+                    .decode(value_str)
+                    .or_else(|_| base64::engine::general_purpose::URL_SAFE.decode(value_str));
+                if let Ok(bytes) = decoded {
+                    // Arrow IPC kv-meta stores a full IPC Message flatbuffer, not a bare Schema
+                    if let Ok(msg) = root_as_message(&bytes) {
+                        if let Some(ipc_schema) = msg.header_as_schema() {
+                            let schema = fb_to_schema(ipc_schema);
+                            println!(
+                                "{}\t(decoded Arrow schema, {} fields)",
+                                kv.key,
+                                schema.fields().len()
+                            );
+                            for field in schema.fields() {
+                                let nullable =
+                                    if field.is_nullable() { " [nullable]" } else { "" };
+                                println!("  {}: {}{}", field.name(), field.data_type(), nullable);
+                            }
+                            continue;
                         }
-                        continue;
                     }
+                    println!("{}\t(binary, {} bytes)", kv.key, bytes.len());
+                } else {
+                    println!("{}\t(binary, {} bytes)", kv.key, value_str.len());
                 }
-                println!("{}\t(binary, {} bytes)", kv.key, value_str.len());
             } else {
                 println!("{}\t{}", kv.key, value_str);
             }
