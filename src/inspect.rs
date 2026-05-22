@@ -165,13 +165,29 @@ fn print_detail(
                     .and_then(|s| s.get(0).ok())
                     .map(|v| strip_trailing_dot_zero(v.to_string()))
                     .unwrap_or_else(|| "null".to_string());
-                let null_str = stats_df
+                let null_count_i64 = stats_df
                     .column(&format!("{name}__null"))
                     .ok()
                     .and_then(|s| s.get(0).ok())
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "null".to_string());
-                println!("    {} → min={} max={} nulls={}", name, min_str, max_str, null_str);
+                    .and_then(|v| match v {
+                        AnyValue::Int64(n) => Some(n),
+                        _ => None,
+                    })
+                    .unwrap_or(0);
+                let null_str = null_count_i64.to_string();
+                let n_distinct_str = stats_df
+                    .column(&format!("{name}__n_distinct"))
+                    .ok()
+                    .and_then(|s| s.get(0).ok())
+                    .and_then(|v| match v {
+                        AnyValue::Int64(n) => Some(n),
+                        _ => None,
+                    })
+                    .map(|raw| raw - if null_count_i64 > 0 { 1 } else { 0 })
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "?".to_string());
+                println!("    {} → min={} max={} nulls={} n_distinct={}",
+                    name, min_str, max_str, null_str, n_distinct_str);
             }
         } else {
             println!("# note: no column statistics — file was written without stats (common with Arrow writers)");
@@ -208,6 +224,10 @@ fn compute_scan_stats(path: &Path, columns: Option<&[String]>) -> anyhow::Result
                     .null_count()
                     .cast(DataType::Int64)
                     .alias(format!("{n}__null")),
+                col(n.as_str())
+                    .n_unique()
+                    .cast(DataType::Int64)
+                    .alias(format!("{n}__n_distinct")),
             ]
         })
         .collect();

@@ -325,6 +325,10 @@ fn test_scan_stats_column_scoping() {
                     .null_count()
                     .cast(DataType::Int64)
                     .alias(format!("{n}__null")),
+                col(n.as_str())
+                    .n_unique()
+                    .cast(DataType::Int64)
+                    .alias(format!("{n}__n_distinct")),
             ]
         })
         .collect();
@@ -333,6 +337,7 @@ fn test_scan_stats_column_scoping() {
     assert!(stats_df.column("id__min").is_ok());
     assert!(stats_df.column("id__max").is_ok());
     assert!(stats_df.column("id__null").is_ok());
+    assert!(stats_df.column("id__n_distinct").is_ok());
     assert!(stats_df.column("name__min").is_err());
     assert!(stats_df.column("score__min").is_err());
 }
@@ -446,6 +451,182 @@ fn test_partition_stats_without_recursive_exits() {
             partition.contains(&expected_key),
             "partition '{partition}' should contain key '{expected_key}'"
         );
+    }
+}
+
+#[test]
+fn test_n_distinct_aggregation() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    let mut lf = LazyFrame::scan_parquet(&path, ScanArgsParquet::default()).unwrap();
+    let schema = lf.collect_schema().unwrap();
+    let col_names: Vec<String> = schema.iter_names().map(|n| n.to_string()).collect();
+
+    let agg_exprs: Vec<polars::prelude::Expr> = col_names
+        .iter()
+        .flat_map(|n| {
+            [
+                col(n.as_str()).min().alias(format!("{n}__min")),
+                col(n.as_str()).max().alias(format!("{n}__max")),
+                col(n.as_str())
+                    .null_count()
+                    .cast(DataType::Int64)
+                    .alias(format!("{n}__null")),
+                col(n.as_str())
+                    .n_unique()
+                    .cast(DataType::Int64)
+                    .alias(format!("{n}__n_distinct")),
+            ]
+        })
+        .collect();
+
+    let stats_df = lf.select(agg_exprs).collect().unwrap();
+
+    use polars::prelude::AnyValue;
+
+    // id has 5 distinct values [1,2,3,4,5], null_count=0 → n_distinct=5
+    let id_null: i64 = match stats_df.column("id__null").unwrap().get(0).unwrap() {
+        AnyValue::Int64(n) => n,
+        _ => panic!("expected Int64"),
+    };
+    let id_nd_raw: i64 = match stats_df.column("id__n_distinct").unwrap().get(0).unwrap() {
+        AnyValue::Int64(n) => n,
+        _ => panic!("expected Int64"),
+    };
+    let id_nd = id_nd_raw - if id_null > 0 { 1 } else { 0 };
+    assert_eq!(id_null, 0);
+    assert_eq!(id_nd, 5, "id should have 5 distinct values");
+
+    // score: [10.5, 20.0, 30.1, 40.2, 50.0] — all distinct, no nulls
+    let score_null: i64 = match stats_df.column("score__null").unwrap().get(0).unwrap() {
+        AnyValue::Int64(n) => n,
+        _ => panic!("expected Int64"),
+    };
+    let score_nd_raw: i64 = match stats_df.column("score__n_distinct").unwrap().get(0).unwrap() {
+        AnyValue::Int64(n) => n,
+        _ => panic!("expected Int64"),
+    };
+    let score_nd = score_nd_raw - if score_null > 0 { 1 } else { 0 };
+    assert_eq!(score_null, 0);
+    assert_eq!(score_nd, 5, "score should have 5 distinct values");
+}
+
+#[test]
+fn test_n_distinct_null_adjustment() {
+    use polars::prelude::AnyValue;
+
+    let dir = TempDir::new().unwrap();
+    // Column with nulls and repeated values
+    let s = Series::new("x".into(), vec![Some(1i64), Some(1), Some(2), None, None]);
+    let mut df = DataFrame::new(vec![s.into()]).unwrap();
+    let path = dir.path().join("nulls.parquet");
+    ParquetWriter::new(File::create(&path).unwrap()).finish(&mut df).unwrap();
+
+    let lf = LazyFrame::scan_parquet(&path, ScanArgsParquet::default()).unwrap();
+    let agg_exprs = vec![
+        col("x").null_count().cast(DataType::Int64).alias("x__null"),
+        col("x").n_unique().cast(DataType::Int64).alias("x__n_distinct"),
+    ];
+    let stats_df = lf.select(agg_exprs).collect().unwrap();
+
+    let null_count: i64 = match stats_df.column("x__null").unwrap().get(0).unwrap() {
+        AnyValue::Int64(n) => n,
+        _ => panic!("expected Int64"),
+    };
+    let nd_raw: i64 = match stats_df.column("x__n_distinct").unwrap().get(0).unwrap() {
+        AnyValue::Int64(n) => n,
+        _ => panic!("expected Int64"),
+    };
+    assert_eq!(null_count, 2, "should have 2 nulls");
+    // polars n_unique counts null as distinct: {1, 2, null} = 3
+    // After adjustment: 3 - 1 = 2 (non-null distinct values: 1 and 2)
+    let nd = nd_raw - if null_count > 0 { 1 } else { 0 };
+    assert_eq!(nd, 2, "non-null distinct values should be 2 (1 and 2)");
+}
+
+#[test]
+fn test_diff_identical_schemas() {
+    let dir = TempDir::new().unwrap();
+    let path_a = write_test_parquet(&dir, "a.parquet", &mut make_test_df());
+    let path_b = write_test_parquet(&dir, "b.parquet", &mut make_test_df());
+
+    let outcome = crate::diff::diff_schemas(&path_a, &path_b).unwrap();
+    assert!(
+        matches!(outcome, crate::diff::DiffOutcome::Identical),
+        "identical files should produce Identical outcome"
+    );
+}
+
+#[test]
+fn test_diff_added_column() {
+    let dir = TempDir::new().unwrap();
+    let path_a = write_test_parquet(&dir, "a.parquet", &mut make_test_df());
+
+    // File B has an extra column
+    let mut df_b = df![
+        "id" => [1i64, 2, 3, 4, 5],
+        "name" => ["alice", "bob", "carol", "dave", "eve"],
+        "score" => [10.5f64, 20.0, 30.1, 40.2, 50.0],
+        "extra" => [0i64, 1, 2, 3, 4],
+    ]
+    .unwrap();
+    let path_b = write_test_parquet(&dir, "b.parquet", &mut df_b);
+
+    let outcome = crate::diff::diff_schemas(&path_a, &path_b).unwrap();
+    match outcome {
+        crate::diff::DiffOutcome::Different { added, removed, changed, .. } => {
+            assert_eq!(added.len(), 1, "should have 1 added column");
+            assert_eq!(added[0].name, "extra");
+            assert!(removed.is_empty(), "should have no removed columns");
+            assert!(changed.is_empty(), "should have no changed columns");
+        }
+        crate::diff::DiffOutcome::Identical => panic!("expected Different"),
+    }
+}
+
+#[test]
+fn test_diff_removed_column() {
+    let dir = TempDir::new().unwrap();
+    let path_a = write_test_parquet(&dir, "a.parquet", &mut make_test_df());
+
+    // File B is missing the score column
+    let mut df_b = df![
+        "id" => [1i64, 2, 3],
+        "name" => ["alice", "bob", "carol"],
+    ]
+    .unwrap();
+    let path_b = write_test_parquet(&dir, "b.parquet", &mut df_b);
+
+    let outcome = crate::diff::diff_schemas(&path_a, &path_b).unwrap();
+    match outcome {
+        crate::diff::DiffOutcome::Different { added, removed, changed, .. } => {
+            assert!(added.is_empty(), "should have no added columns");
+            assert_eq!(removed.len(), 1, "should have 1 removed column");
+            assert_eq!(removed[0].name, "score");
+            assert!(changed.is_empty(), "should have no changed columns");
+        }
+        crate::diff::DiffOutcome::Identical => panic!("expected Different"),
+    }
+}
+
+#[test]
+fn test_diff_union_order() {
+    let dir = TempDir::new().unwrap();
+
+    // A has [id, name], B has [id, extra]
+    let mut df_a = df!["id" => [1i64], "name" => ["x"]].unwrap();
+    let mut df_b = df!["id" => [1i64], "extra" => [2i64]].unwrap();
+    let path_a = write_test_parquet(&dir, "a.parquet", &mut df_a);
+    let path_b = write_test_parquet(&dir, "b.parquet", &mut df_b);
+
+    let outcome = crate::diff::diff_schemas(&path_a, &path_b).unwrap();
+    match outcome {
+        crate::diff::DiffOutcome::Different { union_order, .. } => {
+            // A columns first: [id, name], then B-only: [extra]
+            assert_eq!(union_order, vec!["id", "name", "extra"]);
+        }
+        crate::diff::DiffOutcome::Identical => panic!("expected Different"),
     }
 }
 

@@ -1,5 +1,6 @@
 mod check;
 mod csv_dump;
+mod diff;
 mod dir_mode;
 mod inspect;
 mod kv_meta;
@@ -20,7 +21,14 @@ use std::path::PathBuf;
     long_about = "Inspect Apache Parquet files\n\nExamples:\n  pqls foo.parquet                       # inspect\n  pqls --schema --json foo.parquet       # JSON schema for agents\n  pqls --ndjson --sample 100 foo.parquet # 100 random rows as NDJSON\n  pqls --csv --columns id,ts foo.parquet # project two columns to CSV\n  pqls --kv-meta foo.parquet             # key-value metadata\n  pqls -r /data/events/                  # list partitioned dataset"
 )]
 pub struct Cli {
+    #[arg(index = 1)]
     pub path: PathBuf,
+
+    #[arg(index = 2)]
+    pub path_b: Option<PathBuf>,
+
+    #[arg(long, conflicts_with_all = ["csv", "ndjson", "schema", "kv_meta", "partition_stats", "check", "sample", "head", "detail", "recursive", "quiet", "columns", "scan_stats", "deep"])]
+    pub diff: bool,
 
     #[arg(short = 'd', long)]
     pub detail: bool,
@@ -87,8 +95,13 @@ fn main() -> Result<()> {
         std::process::exit(code);
     });
 
-    if cli.json && !cli.schema && !cli.kv_meta && !cli.check && !cli.partition_stats {
-        eprintln!("error: --json requires --schema, --kv-meta, --check, or --partition-stats");
+    if cli.diff && cli.path_b.is_none() {
+        eprintln!("error: --diff requires two path arguments: pqls --diff A.parquet B.parquet");
+        std::process::exit(3);
+    }
+
+    if cli.json && !cli.schema && !cli.kv_meta && !cli.check && !cli.partition_stats && !cli.diff {
+        eprintln!("error: --json requires --schema, --kv-meta, --check, --partition-stats, or --diff");
         std::process::exit(3);
     }
 
@@ -115,7 +128,23 @@ fn main() -> Result<()> {
         .as_ref()
         .map(|s| s.split(',').map(|c| c.trim().to_string()).collect());
 
-    if cli.csv {
+    if cli.diff {
+        let path_b = cli.path_b.as_ref().unwrap();
+        let outcome = diff::diff_schemas(&cli.path, path_b).unwrap_or_else(|e| {
+            eprintln!("error: {e}");
+            std::process::exit(2);
+        });
+        let identical = matches!(outcome, diff::DiffOutcome::Identical);
+        if cli.json {
+            diff::emit_json(&outcome).unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(2);
+            });
+        } else {
+            diff::emit_text(&outcome);
+        }
+        std::process::exit(if identical { 0 } else { 1 });
+    } else if cli.csv {
         csv_dump::dump_csv(&cli.path, cli.head, columns)?;
     } else if cli.ndjson {
         ndjson_dump::dump_ndjson(&cli.path, cli.head, cli.sample, columns)?;
