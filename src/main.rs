@@ -1,6 +1,9 @@
 mod inspect;
 mod csv_dump;
 mod dir_mode;
+mod schema;
+mod ndjson_dump;
+mod kv_meta;
 #[cfg(test)]
 mod tests;
 
@@ -9,37 +12,82 @@ use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "pqls", version, about = "Inspect Apache Parquet files")]
+#[command(
+    name = "pqls",
+    version,
+    about = "Inspect Apache Parquet files",
+    long_about = "Inspect Apache Parquet files\n\nExamples:\n  pqls foo.parquet                       # inspect\n  pqls --schema --json foo.parquet       # JSON schema for agents\n  pqls --ndjson --sample 100 foo.parquet # 100 random rows as NDJSON\n  pqls --csv --columns id,ts foo.parquet # project two columns to CSV\n  pqls --kv-meta foo.parquet             # key-value metadata\n  pqls -r /data/events/                  # list partitioned dataset"
+)]
 pub struct Cli {
-    /// File or directory to inspect
     pub path: PathBuf,
 
-    /// Per-row-group stats, per-column min/max/nulls, partition layout
     #[arg(short = 'd', long)]
     pub detail: bool,
 
-    /// Recurse into subdirectories
     #[arg(short = 'r', long)]
     pub recursive: bool,
 
-    /// Dump file contents as CSV to stdout
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["ndjson", "schema", "json", "kv_meta"])]
     pub csv: bool,
 
-    /// With --csv, output only first N rows (0 = all)
     #[arg(long, value_name = "N")]
     pub head: Option<u64>,
 
-    /// Suppress decorative headers (machine-readable)
     #[arg(short = 'q', long)]
     pub quiet: bool,
+
+    #[arg(long, conflicts_with_all = ["csv", "ndjson", "sample"])]
+    pub schema: bool,
+
+    #[arg(long, conflicts_with = "csv")]
+    pub json: bool,
+
+    #[arg(long, conflicts_with_all = ["csv", "schema"])]
+    pub ndjson: bool,
+
+    #[arg(long, value_name = "N", value_parser = validate_sample, conflicts_with_all = ["schema", "csv"])]
+    pub sample: Option<u64>,
+
+    #[arg(long, value_name = "COLS")]
+    pub columns: Option<String>,
+
+    #[arg(long = "kv-meta", conflicts_with_all = ["csv"])]
+    pub kv_meta: bool,
+}
+
+fn validate_sample(s: &str) -> std::result::Result<u64, String> {
+    let n: u64 = s.parse().map_err(|_| format!("'{s}' is not a valid number"))?;
+    if n == 0 {
+        Err("--sample N must be > 0".to_string())
+    } else {
+        Ok(n)
+    }
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    if cli.json && !cli.schema && !cli.kv_meta {
+        eprintln!("error: --json requires --schema or --kv-meta");
+        std::process::exit(3);
+    }
+
+    let columns: Option<Vec<String>> = cli.columns
+        .as_ref()
+        .map(|s| s.split(',').map(|c| c.trim().to_string()).collect());
+
     if cli.csv {
-        csv_dump::dump_csv(&cli.path, cli.head)?;
+        csv_dump::dump_csv(&cli.path, cli.head, columns)?;
+    } else if cli.ndjson {
+        ndjson_dump::dump_ndjson(&cli.path, cli.head, cli.sample, columns)?;
+    } else if cli.schema && cli.json {
+        schema::emit_json(&cli.path)?;
+    } else if cli.schema {
+        schema::emit_text(&cli.path, cli.quiet)?;
+    } else if cli.kv_meta && cli.json {
+        kv_meta::emit_json(&cli.path)?;
+    } else if cli.kv_meta {
+        kv_meta::emit_text(&cli.path)?;
     } else if cli.path.is_dir() {
         dir_mode::list_directory(&cli.path, cli.detail, cli.recursive, cli.quiet)?;
     } else {

@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use humansize::{format_size, BINARY};
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use parquet::file::statistics::Statistics;
+use parquet::schema::types::ColumnDescriptor;
 use std::fs::File;
 use std::path::Path;
 
@@ -27,7 +28,13 @@ pub fn inspect_file(path: &Path, detail: bool, quiet: bool) -> Result<()> {
         let schema_descr = meta.file_metadata().schema_descr();
         for i in 0..schema_descr.num_columns() {
             let col = schema_descr.column(i);
-            println!("    [{}] {} ({:?})", i, col.name(), col.physical_type());
+            let logical = get_logical_type_str(&col);
+            let type_str = if let Some(lt) = logical {
+                format!("{:?} [{}]", col.physical_type(), lt)
+            } else {
+                format!("{:?}", col.physical_type())
+            };
+            println!("    [{}] {} ({})", i, col.name(), type_str);
         }
     }
 
@@ -76,6 +83,43 @@ fn print_detail(
     }
 
     Ok(())
+}
+
+fn get_logical_type_str(col: &ColumnDescriptor) -> Option<String> {
+    use parquet::basic::{ConvertedType, LogicalType, TimeUnit};
+    if let Some(lt) = col.logical_type() {
+        match lt {
+            LogicalType::Unknown => {}
+            LogicalType::String => return Some("STRING".to_string()),
+            LogicalType::Date => return Some("DATE".to_string()),
+            LogicalType::Timestamp { unit, .. } => {
+                let s = match unit {
+                    TimeUnit::MILLIS(_) => "TIMESTAMP_MILLIS",
+                    TimeUnit::MICROS(_) => "TIMESTAMP_MICROS",
+                    TimeUnit::NANOS(_) => "TIMESTAMP_NANOS",
+                };
+                return Some(s.to_string());
+            }
+            LogicalType::Integer { bit_width, is_signed } => {
+                return Some(format!("INT({}, {})", bit_width, is_signed));
+            }
+            LogicalType::Decimal { precision, scale } => {
+                return Some(format!("DECIMAL(precision={}, scale={})", precision, scale));
+            }
+            LogicalType::List => return Some("LIST".to_string()),
+            LogicalType::Map => return Some("MAP".to_string()),
+            LogicalType::Enum => return Some("ENUM".to_string()),
+            LogicalType::Json => return Some("JSON".to_string()),
+            LogicalType::Bson => return Some("BSON".to_string()),
+            LogicalType::Uuid => return Some("UUID".to_string()),
+            _ => return Some(format!("{:?}", lt)),
+        }
+    }
+    let ct = col.converted_type();
+    if ct != ConvertedType::NONE {
+        return Some(format!("{:?}", ct));
+    }
+    None
 }
 
 fn format_statistics(stats: &Statistics) -> String {

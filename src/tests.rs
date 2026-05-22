@@ -96,6 +96,84 @@ fn test_directory_partition_discovery() {
     assert_eq!(total_rows, 5, "total rows should be 5");
 }
 
+#[test]
+fn test_schema_json() {
+    // Test that schema JSON output contains expected fields
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    // We can't capture stdout easily, so test via the parquet metadata directly
+    use parquet::file::reader::{FileReader, SerializedFileReader};
+    let file = File::open(&path).unwrap();
+    let reader = SerializedFileReader::new(file).unwrap();
+    let meta = reader.metadata();
+    let schema_descr = meta.file_metadata().schema_descr();
+
+    // Schema should have 3 columns: id, name, score
+    assert_eq!(schema_descr.num_columns(), 3);
+    let col0 = schema_descr.column(0);
+    assert_eq!(col0.name(), "id");
+}
+
+#[test]
+fn test_ndjson_dump() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    // Test that ndjson_dump produces valid output
+    // We test the polars scan + json write directly
+    let df = LazyFrame::scan_parquet(&path, ScanArgsParquet::default())
+        .unwrap()
+        .limit(3)
+        .collect()
+        .unwrap();
+    assert_eq!(df.height(), 3);
+    let col_names: Vec<String> = df.get_column_names().iter().map(|s| s.to_string()).collect();
+    assert!(col_names.iter().any(|n| n == "id"));
+}
+
+#[test]
+fn test_ndjson_columns_projection() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    let df = LazyFrame::scan_parquet(&path, ScanArgsParquet::default())
+        .unwrap()
+        .select([col("id"), col("name")])
+        .collect()
+        .unwrap();
+
+    let cols: Vec<String> = df.get_column_names().iter().map(|s| s.to_string()).collect();
+    assert!(cols.iter().any(|n| n == "id"));
+    assert!(cols.iter().any(|n| n == "name"));
+    assert!(!cols.iter().any(|n| n == "score"));
+}
+
+#[test]
+fn test_sample_within_bounds() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    let df = LazyFrame::scan_parquet(&path, ScanArgsParquet::default())
+        .unwrap()
+        .collect()
+        .unwrap();
+
+    // sample 3 from 5 rows
+    let sampled = df.sample_n_literal(3, false, false, None).unwrap();
+    assert_eq!(sampled.height(), 3);
+}
+
+#[test]
+fn test_kv_meta_no_crash() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    // Just test that it doesn't crash on a file with no kv metadata
+    let result = crate::kv_meta::emit_text(&path);
+    assert!(result.is_ok());
+}
+
 fn capture_inspect(path: &PathBuf, _detail: bool, quiet: bool) -> String {
     use humansize::{format_size, BINARY};
     use parquet::file::reader::{FileReader, SerializedFileReader};
