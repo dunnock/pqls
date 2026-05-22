@@ -1,4 +1,6 @@
 use anyhow::{Context, Result};
+use arrow_ipc::{convert::fb_to_schema, root_as_schema};
+use base64::Engine as _;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -14,7 +16,27 @@ pub fn emit_text(path: &Path) -> Result<()> {
     if let Some(kv_list) = file_meta.key_value_metadata() {
         for kv in kv_list {
             let value_str = kv.value.as_deref().unwrap_or("");
-            println!("{}\t{}", kv.key, value_str);
+            if kv.key == "ARROW:schema" {
+                if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(value_str) {
+                    if let Ok(ipc_schema) = root_as_schema(&bytes) {
+                        let schema = fb_to_schema(ipc_schema);
+                        println!(
+                            "{}\t(decoded Arrow schema, {} fields)",
+                            kv.key,
+                            schema.fields().len()
+                        );
+                        for field in schema.fields() {
+                            let nullable =
+                                if field.is_nullable() { " [nullable]" } else { "" };
+                            println!("  {}: {}{}", field.name(), field.data_type(), nullable);
+                        }
+                        continue;
+                    }
+                }
+                println!("{}\t(binary, {} bytes, decode failed)", kv.key, value_str.len());
+            } else {
+                println!("{}\t{}", kv.key, value_str);
+            }
         }
     }
 

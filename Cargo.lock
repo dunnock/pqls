@@ -1966,6 +1966,8 @@ name = "pqls"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arrow-ipc",
+ "base64",
  "clap",
  "humansize",
  "parquet",

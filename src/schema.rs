@@ -47,29 +47,18 @@ pub fn get_logical_type_str(col: &ColumnDescriptor) -> Option<String> {
     None
 }
 
-pub fn emit_text(path: &Path, quiet: bool) -> Result<()> {
+pub fn emit_text(path: &Path) -> Result<()> {
     let file = File::open(path).with_context(|| format!("Cannot open {}", path.display()))?;
     let reader = SerializedFileReader::new(file)?;
     let meta = reader.metadata();
-    let file_meta = meta.file_metadata();
-    let schema_descr = file_meta.schema_descr();
-
-    if !quiet {
-        println!("{}", path.display());
-        println!("  rows:        {}", file_meta.num_rows());
-        println!("  row groups:  {}", meta.num_row_groups());
-        println!("  schema:");
-    }
+    let schema_descr = meta.file_metadata().schema_descr();
 
     for i in 0..schema_descr.num_columns() {
         let col = schema_descr.column(i);
-        let logical = get_logical_type_str(&col);
-        let type_str = if let Some(lt) = logical {
-            format!("{:?} [{}]", col.physical_type(), lt)
-        } else {
-            format!("{:?}", col.physical_type())
-        };
-        println!("      [{}] {} ({})", i, col.name(), type_str);
+        match get_logical_type_str(&col) {
+            Some(lt) => println!("{} {:?} {}", col.name(), col.physical_type(), lt),
+            None => println!("{} {:?}", col.name(), col.physical_type()),
+        }
     }
 
     Ok(())

@@ -13,6 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
+arrow-ipc = "54"
+base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
 humansize = "2"
 parquet = { version = "54", features = ["arrow", "snap", "brotli", "flate2", "lz4", "zstd"] }

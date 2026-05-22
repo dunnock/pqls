@@ -55,6 +55,34 @@ pqls -d -r /path/to/dataset/
 pqls -q data.parquet
 ```
 
+## Why pqls?
+
+**Static binary.** No JVM, no Python interpreter, no `pip install`. Drop the binary on
+any Linux box and it runs — sub-100ms startup on the critical path of a data pipeline.
+
+**Composable.** Stdout is always clean (data only; warnings go to stderr). Pipe anywhere:
+
+```sh
+pqls --csv file.parquet | xsv stats
+pqls --schema file.parquet | diff - expected.schema
+```
+
+**Agent-friendly.** Machine-readable `--schema --json` and `--ndjson` output let code
+agents inspect schema and rows without parsing human text. See `SKILL.md` for patterns.
+
+**One-liner install:**
+
+```sh
+curl -fsSL https://github.com/dunnock/pqls/releases/latest/download/install.sh | sh
+```
+
+| Tool | Runtime | Startup | Schema dump | Stats | Pipe-composable |
+|------|---------|---------|-------------|-------|-----------------|
+| **pqls** | none (static) | ~50ms | `--schema --json` | `--scan-stats` | yes |
+| parquet-tools | JVM | ~2s | text only | yes | no |
+| DuckDB | Go binary | ~200ms | SQL only | SQL | no |
+| fastparquet | Python | ~500ms | Python API | Python API | no |
+
 ## How pqls compares
 
 | | pqls | parquet-cli (Apache) | pqrs | DuckDB |

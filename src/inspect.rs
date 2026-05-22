@@ -3,16 +3,43 @@ use humansize::{format_size, BINARY};
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use parquet::file::statistics::Statistics;
 use parquet::schema::types::ColumnDescriptor;
+use polars::prelude::*;
 use std::fs::File;
 use std::path::Path;
 
-pub fn inspect_file(path: &Path, detail: bool, quiet: bool) -> Result<()> {
+pub fn inspect_file(
+    path: &Path,
+    detail: bool,
+    scan_stats: bool,
+    quiet: bool,
+    columns: Option<Vec<String>>,
+) -> Result<()> {
     let file = File::open(path).with_context(|| format!("Cannot open {}", path.display()))?;
     let reader = SerializedFileReader::new(file)?;
     let meta = reader.metadata();
     let file_meta = meta.file_metadata();
 
     let file_size = std::fs::metadata(path)?.len();
+
+    // Validate columns when they'll actually be used (detail mode only)
+    if detail {
+        if let Some(ref cols) = columns {
+            let schema_descr = file_meta.schema_descr();
+            let valid: Vec<String> = (0..schema_descr.num_columns())
+                .map(|i| schema_descr.column(i).name().to_string())
+                .collect();
+            for c in cols {
+                if !valid.contains(c) {
+                    eprintln!(
+                        "error: unknown column: \"{}\"; valid columns: {}",
+                        c,
+                        valid.join(", ")
+                    );
+                    std::process::exit(3);
+                }
+            }
+        }
+    }
 
     if !quiet {
         println!("{}", path.display());
@@ -39,17 +66,24 @@ pub fn inspect_file(path: &Path, detail: bool, quiet: bool) -> Result<()> {
     }
 
     if detail {
-        print_detail(path, meta, quiet)?;
+        print_detail(path, meta, quiet, scan_stats, columns.as_deref())?;
     }
 
     Ok(())
 }
 
 fn print_detail(
-    _path: &Path,
+    path: &Path,
     meta: &parquet::file::metadata::ParquetMetaData,
     quiet: bool,
+    scan_stats: bool,
+    columns: Option<&[String]>,
 ) -> Result<()> {
+    let all_no_stats = (0..meta.num_row_groups()).all(|rg_idx| {
+        let rg = meta.row_group(rg_idx);
+        (0..rg.num_columns()).all(|col_idx| rg.column(col_idx).statistics().is_none())
+    });
+
     if !quiet {
         println!("  row groups:");
     }
@@ -65,24 +99,120 @@ fn print_detail(
             );
         }
 
-        for col_idx in 0..rg.num_columns() {
-            let col_chunk = rg.column(col_idx);
-            let col_name = col_chunk.column_descr().name().to_string();
+        if !all_no_stats {
+            for col_idx in 0..rg.num_columns() {
+                let col_chunk = rg.column(col_idx);
+                let col_name = col_chunk.column_descr().name().to_string();
 
-            let stats_str = col_chunk
-                .statistics()
-                .map(format_statistics)
-                .unwrap_or_else(|| "(no stats)".to_string());
+                if let Some(cols) = columns {
+                    if !cols.iter().any(|c| c == &col_name) {
+                        continue;
+                    }
+                }
 
-            if !quiet {
-                println!("      {} → {}", col_name, stats_str);
-            } else {
-                println!("{}\t{}\t{}", rg_idx, col_name, stats_str);
+                let stats_str = col_chunk
+                    .statistics()
+                    .map(format_statistics)
+                    .unwrap_or_else(|| "(no stats)".to_string());
+
+                if !quiet {
+                    println!("      {} → {}", col_name, stats_str);
+                } else {
+                    println!("{}\t{}\t{}", rg_idx, col_name, stats_str);
+                }
             }
         }
     }
 
+    if all_no_stats {
+        if scan_stats {
+            eprintln!("warning: --scan-stats reads the full file");
+            let mut stats_df = compute_scan_stats(path, columns)?;
+            let dt_cast: Vec<Expr> = stats_df
+                .schema()
+                .iter()
+                .filter_map(|(name, dtype)| match dtype {
+                    DataType::Datetime(_, _) => {
+                        Some(col(name.as_str()).dt().strftime("%Y-%m-%dT%H:%M:%SZ"))
+                    }
+                    _ => None,
+                })
+                .collect();
+            if !dt_cast.is_empty() {
+                stats_df = stats_df.lazy().with_columns(dt_cast).collect()?;
+            }
+            println!("  scan stats (file-level):");
+            let schema_descr = meta.file_metadata().schema_descr();
+            for i in 0..schema_descr.num_columns() {
+                let col_desc = schema_descr.column(i);
+                let name = col_desc.name();
+
+                if let Some(cols) = columns {
+                    if !cols.iter().any(|c| c == name) {
+                        continue;
+                    }
+                }
+
+                let min_str = stats_df
+                    .column(&format!("{name}__min"))
+                    .ok()
+                    .and_then(|s| s.get(0).ok())
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "null".to_string());
+                let max_str = stats_df
+                    .column(&format!("{name}__max"))
+                    .ok()
+                    .and_then(|s| s.get(0).ok())
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "null".to_string());
+                let null_str = stats_df
+                    .column(&format!("{name}__null"))
+                    .ok()
+                    .and_then(|s| s.get(0).ok())
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "null".to_string());
+                println!("    {} → min={} max={} nulls={}", name, min_str, max_str, null_str);
+            }
+        } else {
+            println!("# note: no column statistics — file was written without stats (common with Arrow writers)");
+            println!("#       run with --scan-stats to compute min/max from data (reads full file)");
+        }
+    }
+
     Ok(())
+}
+
+fn compute_scan_stats(path: &Path, columns: Option<&[String]>) -> anyhow::Result<DataFrame> {
+    let mut lf = LazyFrame::scan_parquet(path, ScanArgsParquet::default())
+        .with_context(|| format!("Cannot scan {}", path.display()))?;
+
+    let schema = lf.collect_schema()?;
+
+    let col_names: Vec<String> = schema
+        .iter_names()
+        .filter(|name| {
+            columns.map_or(true, |cols| {
+                cols.iter().any(|c| c.as_str() == name.as_str())
+            })
+        })
+        .map(|n| n.to_string())
+        .collect();
+
+    let agg_exprs: Vec<Expr> = col_names
+        .iter()
+        .flat_map(|n| {
+            [
+                col(n.as_str()).min().alias(format!("{n}__min")),
+                col(n.as_str()).max().alias(format!("{n}__max")),
+                col(n.as_str())
+                    .null_count()
+                    .cast(DataType::Int64)
+                    .alias(format!("{n}__null")),
+            ]
+        })
+        .collect();
+
+    lf.select(agg_exprs).collect().map_err(Into::into)
 }
 
 fn get_logical_type_str(col: &ColumnDescriptor) -> Option<String> {
