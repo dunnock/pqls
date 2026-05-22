@@ -1,0 +1,28 @@
+[package]
+name = "pqls"
+version = "0.1.0"
+edition = "2021"
+description = "A command-line tool for inspecting Apache Parquet files, modelled on h5ls"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/dunnock/pqls"
+keywords = ["parquet", "cli", "data-engineering"]
+
+[[bin]]
+name = "pqls"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+humansize = "2"
+parquet = { version = "54", features = ["arrow", "snap", "brotli", "flate2", "lz4", "zstd"] }
+polars = { version = "0.46", features = ["parquet", "csv", "lazy"] }
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

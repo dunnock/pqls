@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-x86_64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-x86_64-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build x86_64
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Rename binary
+        run: cp target/x86_64-unknown-linux-gnu/release/pqls pqls-linux-x86_64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pqls-linux-x86_64
+          path: pqls-linux-x86_64
+
+  build-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-aarch64-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build aarch64
+        run: cross build --release --target aarch64-unknown-linux-gnu
+
+      - name: Rename binary
+        run: cp target/aarch64-unknown-linux-gnu/release/pqls pqls-linux-aarch64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pqls-linux-aarch64
+          path: pqls-linux-aarch64
+
+  release:
+    needs: [build-x86_64, build-aarch64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: pqls-linux-x86_64
+
+      - name: Download aarch64
+        uses: actions/download-artifact@v4
+        with:
+          name: pqls-linux-aarch64
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            pqls-linux-x86_64
+            pqls-linux-aarch64
