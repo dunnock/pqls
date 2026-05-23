@@ -52,6 +52,11 @@ pqls --csv --head 5 --columns col1,col2 file.parquet
 pqls --ndjson --head 10 file.parquet
 ```
 
+## --scan-stats
+
+Reads the full file to compute per-column min, max, null count, and n_distinct.
+`n_distinct` reports distinct non-null values: it subtracts 1 from Polars' n_unique when nulls are present, because Polars counts null as a distinct value.
+
 ## Gotchas
 - `--json` requires `--schema` or `--kv-meta`; standalone is an error (exit 3).
 - `--sample` is non-deterministic (no seed). Do not rely on row order.

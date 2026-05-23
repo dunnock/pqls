@@ -186,6 +186,7 @@ fn print_detail(
                         AnyValue::Int64(n) => Some(n),
                         _ => None,
                     })
+                    // Polars n_unique() counts null as a distinct value; subtract 1 when nulls are present to get distinct non-null count.
                     .map(|raw| raw - if null_count_i64 > 0 { 1 } else { 0 })
                     .map(|n| n.to_string())
                     .unwrap_or_else(|| "?".to_string());
