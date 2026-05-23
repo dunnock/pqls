@@ -5,6 +5,7 @@ mod dir_mode;
 mod inspect;
 mod kv_meta;
 mod ndjson_dump;
+mod sample;
 mod schema;
 #[cfg(test)]
 mod tests;
@@ -54,7 +55,7 @@ pub struct Cli {
     #[arg(long, help = "Stream rows as newline-delimited JSON (NDJSON). Combine with --sample or --head to limit output.", conflicts_with_all = ["csv", "schema"])]
     pub ndjson: bool,
 
-    #[arg(long, value_name = "N", value_parser = validate_sample, help = "Emit N randomly-sampled rows; requires --ndjson or --csv", conflicts_with_all = ["schema", "csv"])]
+    #[arg(long, value_name = "N", value_parser = validate_sample, help = "Emit N randomly-sampled rows; requires --ndjson or --csv", conflicts_with = "schema")]
     pub sample: Option<u64>,
 
     #[arg(long, value_name = "COLS", help = "Comma-separated list of column names to project (e.g. id,ts,value)")]
@@ -76,6 +77,24 @@ pub struct Cli {
     pub deep: bool,
 }
 
+fn validate_columns_for_schema(path: &std::path::Path, columns: Option<&[String]>) {
+    let Some(cols) = columns else { return };
+    let schema_cols = schema::column_names(path).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    });
+    for c in cols {
+        if !schema_cols.iter().any(|sc| sc == c) {
+            eprintln!(
+                "error: unknown column: \"{}\"; valid columns: {}",
+                c,
+                schema_cols.join(", ")
+            );
+            std::process::exit(2);
+        }
+    }
+}
+
 fn validate_sample(s: &str) -> std::result::Result<u64, String> {
     let n: u64 = s.parse().map_err(|_| format!("'{s}' is not a valid number"))?;
     if n == 0 {
@@ -90,7 +109,7 @@ fn main() -> Result<()> {
         let code = match e.kind() {
             clap::error::ErrorKind::DisplayHelp
             | clap::error::ErrorKind::DisplayVersion => 0,
-            clap::error::ErrorKind::ArgumentConflict => 3,
+            clap::error::ErrorKind::ArgumentConflict => 2,
             _ => 2,
         };
         e.print().unwrap();
@@ -99,17 +118,17 @@ fn main() -> Result<()> {
 
     if cli.diff && cli.path_b.is_none() {
         eprintln!("error: --diff requires two path arguments: pqls --diff A.parquet B.parquet");
-        std::process::exit(3);
+        std::process::exit(2);
     }
 
     if cli.json && !cli.schema && !cli.kv_meta && !cli.check && !cli.partition_stats && !cli.diff {
         eprintln!("error: --json requires --schema, --kv-meta, --check, --partition-stats, or --diff");
-        std::process::exit(3);
+        std::process::exit(2);
     }
 
     if cli.partition_stats && !cli.recursive {
         eprintln!("error: --partition-stats requires -r");
-        std::process::exit(3);
+        std::process::exit(2);
     }
 
     if let Some(n) = cli.sample {
@@ -117,13 +136,13 @@ fn main() -> Result<()> {
             eprintln!(
                 "error: --sample requires --ndjson or --csv; did you mean: pqls --ndjson --sample {n} FILE"
             );
-            std::process::exit(3);
+            std::process::exit(2);
         }
     }
 
     if cli.scan_stats && !cli.detail {
         eprintln!("error: --scan-stats requires -d / --detail");
-        std::process::exit(3);
+        std::process::exit(2);
     }
 
     let columns: Option<Vec<String>> = cli.columns
@@ -134,26 +153,28 @@ fn main() -> Result<()> {
         let path_b = cli.path_b.as_ref().unwrap();
         let outcome = diff::diff_schemas(&cli.path, path_b).unwrap_or_else(|e| {
             eprintln!("error: {e}");
-            std::process::exit(2);
+            std::process::exit(1);
         });
         let identical = matches!(outcome, diff::DiffOutcome::Identical);
         if cli.json {
             diff::emit_json(&outcome).unwrap_or_else(|e| {
                 eprintln!("error: {e}");
-                std::process::exit(2);
+                std::process::exit(1);
             });
         } else {
             diff::emit_text(&outcome);
         }
         std::process::exit(if identical { 0 } else { 1 });
     } else if cli.csv {
-        csv_dump::dump_csv(&cli.path, cli.head, columns)?;
+        csv_dump::dump_csv(&cli.path, cli.head, cli.sample, columns)?;
     } else if cli.ndjson {
         ndjson_dump::dump_ndjson(&cli.path, cli.head, cli.sample, columns)?;
     } else if cli.schema && cli.json {
-        schema::emit_json(&cli.path)?;
+        validate_columns_for_schema(&cli.path, columns.as_deref());
+        schema::emit_json(&cli.path, columns.as_deref())?;
     } else if cli.schema {
-        schema::emit_text(&cli.path)?;
+        validate_columns_for_schema(&cli.path, columns.as_deref());
+        schema::emit_text(&cli.path, columns.as_deref())?;
     } else if cli.kv_meta && cli.json {
         kv_meta::emit_json(&cli.path)?;
     } else if cli.kv_meta {

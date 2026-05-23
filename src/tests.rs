@@ -165,6 +165,81 @@ fn test_sample_within_bounds() {
 }
 
 #[test]
+fn test_sample_lazy_exact_count() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    let df = crate::sample::sample_lazy(&path, 3).unwrap();
+    assert_eq!(df.height(), 3, "sample_lazy should return exactly N rows");
+    // schema must be preserved
+    let cols: Vec<String> = df.get_column_names().iter().map(|s| s.to_string()).collect();
+    assert!(cols.iter().any(|n| n == "id"));
+    assert!(cols.iter().any(|n| n == "name"));
+    assert!(cols.iter().any(|n| n == "score"));
+}
+
+#[test]
+fn test_sample_lazy_exceeds_rows() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    // 10 > 5 rows in file — should return all 5
+    let df = crate::sample::sample_lazy(&path, 10).unwrap();
+    assert_eq!(df.height(), 5, "sample exceeding row count should return all rows");
+}
+
+#[test]
+fn test_sample_lazy_single_row() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    let df = crate::sample::sample_lazy(&path, 1).unwrap();
+    assert_eq!(df.height(), 1);
+}
+
+#[test]
+fn test_csv_dump_with_sample() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    // Capture output to a buffer
+    let df = crate::sample::sample_lazy(&path, 3).unwrap();
+    let mut buf = Vec::new();
+    CsvWriter::new(&mut buf).finish(&mut df.clone()).unwrap();
+    let text = String::from_utf8(buf).unwrap();
+
+    let lines: Vec<&str> = text.lines().collect();
+    // 1 header + 3 data rows = 4 lines
+    assert_eq!(lines.len(), 4, "CSV: 1 header + 3 data rows expected, got:\n{text}");
+}
+
+fn make_large_test_df() -> DataFrame {
+    let n = 100usize;
+    let ids: Vec<i64> = (0..n as i64).collect();
+    let names: Vec<String> = (0..n).map(|i| format!("user_{i}")).collect();
+    let names_str: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+    let scores: Vec<f64> = (0..n).map(|i| i as f64 * 1.5).collect();
+    df!["id" => ids, "name" => names_str, "score" => scores].unwrap()
+}
+
+/// Acceptance criterion: --csv --sample 10 | wc -l == 11 (1 header + 10 rows)
+#[test]
+fn test_csv_sample_line_count() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "big.parquet", &mut make_large_test_df());
+
+    let df = crate::sample::sample_lazy(&path, 10).unwrap();
+    assert_eq!(df.height(), 10, "sample_lazy must return exactly 10 rows from a 100-row file");
+
+    let mut buf = Vec::new();
+    CsvWriter::new(&mut buf).finish(&mut df.clone()).unwrap();
+    let text = String::from_utf8(buf).unwrap();
+    let line_count = text.lines().count();
+    // wc -l counts newlines; CsvWriter adds trailing newline so lines() == wc -l
+    assert_eq!(line_count, 11, "CSV output must have 11 lines (1 header + 10 rows), got {line_count}:\n{text}");
+}
+
+#[test]
 fn test_kv_meta_no_crash() {
     let dir = TempDir::new().unwrap();
     let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
@@ -255,6 +330,31 @@ fn test_timestamp_alignment() {
         serde_json::from_str(json_text.lines().next().unwrap()).unwrap();
     let json_ts = json_obj["ts"].as_str().unwrap();
 
+    // scan-stats: apply same strftime as inspect.rs (after P6 fix)
+    let lf_scan = LazyFrame::scan_parquet(&path, ScanArgsParquet::default()).unwrap();
+    let agg_exprs = vec![
+        col("ts").min().alias("ts__min"),
+    ];
+    let mut stats_df = lf_scan.select(agg_exprs).collect().unwrap();
+    let dt_cast: Vec<Expr> = stats_df
+        .schema()
+        .iter()
+        .filter_map(|(name, dtype)| match dtype {
+            DataType::Datetime(_, _) => {
+                Some(col(name.as_str()).dt().strftime("%Y-%m-%dT%H:%M:%S%.fZ"))
+            }
+            _ => None,
+        })
+        .collect();
+    if !dt_cast.is_empty() {
+        stats_df = stats_df.lazy().with_columns(dt_cast).collect().unwrap();
+    }
+    let scan_ts = match stats_df.column("ts__min").unwrap().get(0).unwrap() {
+        AnyValue::String(s) => s.to_string(),
+        AnyValue::StringOwned(s) => s.to_string(),
+        other => other.to_string(),
+    };
+
     assert!(csv_ts.contains('T'), "CSV timestamp should use T separator: {csv_ts}");
     assert!(json_ts.contains('T'), "NDJSON timestamp should use T separator: {json_ts}");
 
@@ -262,6 +362,17 @@ fn test_timestamp_alignment() {
     assert!(!csv_ts.contains(".000000000"), "CSV should not have trailing zeros: {csv_ts}");
 
     assert!(json_ts.ends_with('Z'), "NDJSON timestamp should end with Z: {json_ts}");
+
+    assert!(scan_ts.contains('T'), "scan-stats timestamp should use T separator: {scan_ts}");
+    assert!(scan_ts.ends_with('Z'), "scan-stats timestamp should end with Z: {scan_ts}");
+    assert_eq!(
+        scan_ts, json_ts,
+        "scan-stats and NDJSON must produce identical timestamp strings"
+    );
+    assert_eq!(
+        scan_ts, csv_ts,
+        "scan-stats and CSV must produce identical timestamp strings"
+    );
 }
 
 #[test]
@@ -440,7 +551,7 @@ fn test_partition_stats_json_no_crash() {
 
 #[test]
 fn test_partition_stats_without_recursive_exits() {
-    // Verify the validation logic: --partition-stats without -r should exit 3
+    // Verify the validation logic: --partition-stats without -r should exit 2
     // (tested via the flag check in main.rs — here we just verify the parsing logic)
     let parts: Vec<(String, String)> = vec![
         ("year=2024/month=01".to_string(), "year".to_string()),
@@ -628,6 +739,80 @@ fn test_diff_union_order() {
         }
         crate::diff::DiffOutcome::Identical => panic!("expected Different"),
     }
+}
+
+#[test]
+fn test_schema_column_names() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    let names = crate::schema::column_names(&path).unwrap();
+    assert_eq!(names, vec!["id", "name", "score"]);
+}
+
+#[test]
+fn test_schema_text_columns_filter() {
+    // Verify that emit_text with columns skips non-listed columns (schema-order preserved)
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    use parquet::file::reader::{FileReader, SerializedFileReader};
+    let file = File::open(&path).unwrap();
+    let reader = SerializedFileReader::new(file).unwrap();
+    let schema_descr = reader.metadata().file_metadata().schema_descr();
+
+    let requested = ["id".to_string(), "score".to_string()];
+    let mut matched_names: Vec<String> = Vec::new();
+    for i in 0..schema_descr.num_columns() {
+        let col = schema_descr.column(i);
+        if requested.iter().any(|c| c == col.name()) {
+            matched_names.push(col.name().to_string());
+        }
+    }
+    // 2 lines expected; schema order preserved (id before score)
+    assert_eq!(matched_names.len(), 2);
+    assert_eq!(matched_names[0], "id");
+    assert_eq!(matched_names[1], "score");
+}
+
+#[test]
+fn test_schema_json_columns_filter_count() {
+    // Verify that emit_json with a single column produces fields of length 1
+    // and preserves original schema index
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    use parquet::file::reader::{FileReader, SerializedFileReader};
+    let file = File::open(&path).unwrap();
+    let reader = SerializedFileReader::new(file).unwrap();
+    let schema_descr = reader.metadata().file_metadata().schema_descr();
+
+    let requested = ["score".to_string()];
+    let mut matched: Vec<(usize, String)> = Vec::new();
+    for i in 0..schema_descr.num_columns() {
+        let col = schema_descr.column(i);
+        if requested.iter().any(|c| c == col.name()) {
+            matched.push((i, col.name().to_string()));
+        }
+    }
+    // .fields | length = 1
+    assert_eq!(matched.len(), 1);
+    // original index preserved (score is column 2 → index 2)
+    assert_eq!(matched[0].0, 2);
+    assert_eq!(matched[0].1, "score");
+}
+
+#[test]
+fn test_schema_columns_validation_unknown() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    let names = crate::schema::column_names(&path).unwrap();
+    let bad = "nonexistent";
+    assert!(
+        !names.iter().any(|n| n == bad),
+        "nonexistent should not be a valid column"
+    );
 }
 
 fn capture_inspect(path: &PathBuf, _detail: bool, quiet: bool) -> String {

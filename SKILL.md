@@ -28,10 +28,8 @@ Stderr: warnings and errors only.
 ## Exit codes
 
 - `0` success
-- `1` file not found or not readable
-- `2` invalid parquet (corrupt footer)
-- `3` bad argument combination
-- `4` internal error (report a bug)
+- `1` file not found, not readable, or invalid parquet
+- `2` bad argument combination (user error)
 
 ## Agent patterns
 
@@ -51,6 +49,11 @@ pqls --csv --head 5 --columns col1,col2 file.parquet
 # 5. First N rows as NDJSON (deterministic, no --sample):
 pqls --ndjson --head 10 file.parquet
 ```
+
+## --scan-stats
+
+Reads the full file to compute per-column min, max, null count, and n_distinct.
+`n_distinct` reports distinct non-null values: it subtracts 1 from Polars' n_unique when nulls are present, because Polars counts null as a distinct value.
 
 ## Gotchas
 - `--json` requires `--schema` or `--kv-meta`; standalone is an error (exit 3).

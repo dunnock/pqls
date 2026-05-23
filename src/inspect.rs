@@ -35,7 +35,7 @@ pub fn inspect_file(
                         c,
                         valid.join(", ")
                     );
-                    std::process::exit(3);
+                    std::process::exit(2);
                 }
             }
         }
@@ -136,7 +136,7 @@ fn print_detail(
                 .iter()
                 .filter_map(|(name, dtype)| match dtype {
                     DataType::Datetime(_, _) => {
-                        Some(col(name.as_str()).dt().strftime("%Y-%m-%dT%H:%M:%SZ"))
+                        Some(col(name.as_str()).dt().strftime("%Y-%m-%dT%H:%M:%S%.fZ"))
                     }
                     _ => None,
                 })
@@ -186,6 +186,7 @@ fn print_detail(
                         AnyValue::Int64(n) => Some(n),
                         _ => None,
                     })
+                    // Polars n_unique() counts null as a distinct value; subtract 1 when nulls are present to get distinct non-null count.
                     .map(|raw| raw - if null_count_i64 > 0 { 1 } else { 0 })
                     .map(|n| n.to_string())
                     .unwrap_or_else(|| "?".to_string());
@@ -210,7 +211,7 @@ fn compute_scan_stats(path: &Path, columns: Option<&[String]>) -> anyhow::Result
     let col_names: Vec<String> = schema
         .iter_names()
         .filter(|name| {
-            columns.map_or(true, |cols| {
+            columns.is_none_or(|cols| {
                 cols.iter().any(|c| c.as_str() == name.as_str())
             })
         })
