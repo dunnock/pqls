@@ -5,6 +5,7 @@ mod dir_mode;
 mod inspect;
 mod kv_meta;
 mod ndjson_dump;
+mod sample;
 mod schema;
 #[cfg(test)]
 mod tests;
@@ -54,7 +55,7 @@ pub struct Cli {
     #[arg(long, help = "Stream rows as newline-delimited JSON (NDJSON). Combine with --sample or --head to limit output.", conflicts_with_all = ["csv", "schema"])]
     pub ndjson: bool,
 
-    #[arg(long, value_name = "N", value_parser = validate_sample, help = "Emit N randomly-sampled rows; requires --ndjson or --csv", conflicts_with_all = ["schema", "csv"])]
+    #[arg(long, value_name = "N", value_parser = validate_sample, help = "Emit N randomly-sampled rows; requires --ndjson or --csv", conflicts_with = "schema")]
     pub sample: Option<u64>,
 
     #[arg(long, value_name = "COLS", help = "Comma-separated list of column names to project (e.g. id,ts,value)")]
@@ -147,7 +148,7 @@ fn main() -> Result<()> {
         }
         std::process::exit(if identical { 0 } else { 1 });
     } else if cli.csv {
-        csv_dump::dump_csv(&cli.path, cli.head, columns)?;
+        csv_dump::dump_csv(&cli.path, cli.head, cli.sample, columns)?;
     } else if cli.ndjson {
         ndjson_dump::dump_ndjson(&cli.path, cli.head, cli.sample, columns)?;
     } else if cli.schema && cli.json {

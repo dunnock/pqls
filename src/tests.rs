@@ -165,6 +165,81 @@ fn test_sample_within_bounds() {
 }
 
 #[test]
+fn test_sample_lazy_exact_count() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    let df = crate::sample::sample_lazy(&path, 3).unwrap();
+    assert_eq!(df.height(), 3, "sample_lazy should return exactly N rows");
+    // schema must be preserved
+    let cols: Vec<String> = df.get_column_names().iter().map(|s| s.to_string()).collect();
+    assert!(cols.iter().any(|n| n == "id"));
+    assert!(cols.iter().any(|n| n == "name"));
+    assert!(cols.iter().any(|n| n == "score"));
+}
+
+#[test]
+fn test_sample_lazy_exceeds_rows() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    // 10 > 5 rows in file — should return all 5
+    let df = crate::sample::sample_lazy(&path, 10).unwrap();
+    assert_eq!(df.height(), 5, "sample exceeding row count should return all rows");
+}
+
+#[test]
+fn test_sample_lazy_single_row() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    let df = crate::sample::sample_lazy(&path, 1).unwrap();
+    assert_eq!(df.height(), 1);
+}
+
+#[test]
+fn test_csv_dump_with_sample() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
+
+    // Capture output to a buffer
+    let df = crate::sample::sample_lazy(&path, 3).unwrap();
+    let mut buf = Vec::new();
+    CsvWriter::new(&mut buf).finish(&mut df.clone()).unwrap();
+    let text = String::from_utf8(buf).unwrap();
+
+    let lines: Vec<&str> = text.lines().collect();
+    // 1 header + 3 data rows = 4 lines
+    assert_eq!(lines.len(), 4, "CSV: 1 header + 3 data rows expected, got:\n{text}");
+}
+
+fn make_large_test_df() -> DataFrame {
+    let n = 100usize;
+    let ids: Vec<i64> = (0..n as i64).collect();
+    let names: Vec<String> = (0..n).map(|i| format!("user_{i}")).collect();
+    let names_str: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+    let scores: Vec<f64> = (0..n).map(|i| i as f64 * 1.5).collect();
+    df!["id" => ids, "name" => names_str, "score" => scores].unwrap()
+}
+
+/// Acceptance criterion: --csv --sample 10 | wc -l == 11 (1 header + 10 rows)
+#[test]
+fn test_csv_sample_line_count() {
+    let dir = TempDir::new().unwrap();
+    let path = write_test_parquet(&dir, "big.parquet", &mut make_large_test_df());
+
+    let df = crate::sample::sample_lazy(&path, 10).unwrap();
+    assert_eq!(df.height(), 10, "sample_lazy must return exactly 10 rows from a 100-row file");
+
+    let mut buf = Vec::new();
+    CsvWriter::new(&mut buf).finish(&mut df.clone()).unwrap();
+    let text = String::from_utf8(buf).unwrap();
+    let line_count = text.lines().count();
+    // wc -l counts newlines; CsvWriter adds trailing newline so lines() == wc -l
+    assert_eq!(line_count, 11, "CSV output must have 11 lines (1 header + 10 rows), got {line_count}:\n{text}");
+}
+
+#[test]
 fn test_kv_meta_no_crash() {
     let dir = TempDir::new().unwrap();
     let path = write_test_parquet(&dir, "test.parquet", &mut make_test_df());
