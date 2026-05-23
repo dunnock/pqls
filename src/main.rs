@@ -77,6 +77,24 @@ pub struct Cli {
     pub deep: bool,
 }
 
+fn validate_columns_for_schema(path: &std::path::Path, columns: Option<&[String]>) {
+    let Some(cols) = columns else { return };
+    let schema_cols = schema::column_names(path).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    });
+    for c in cols {
+        if !schema_cols.iter().any(|sc| sc == c) {
+            eprintln!(
+                "error: unknown column: \"{}\"; valid columns: {}",
+                c,
+                schema_cols.join(", ")
+            );
+            std::process::exit(2);
+        }
+    }
+}
+
 fn validate_sample(s: &str) -> std::result::Result<u64, String> {
     let n: u64 = s.parse().map_err(|_| format!("'{s}' is not a valid number"))?;
     if n == 0 {
@@ -152,9 +170,11 @@ fn main() -> Result<()> {
     } else if cli.ndjson {
         ndjson_dump::dump_ndjson(&cli.path, cli.head, cli.sample, columns)?;
     } else if cli.schema && cli.json {
-        schema::emit_json(&cli.path)?;
+        validate_columns_for_schema(&cli.path, columns.as_deref());
+        schema::emit_json(&cli.path, columns.as_deref())?;
     } else if cli.schema {
-        schema::emit_text(&cli.path)?;
+        validate_columns_for_schema(&cli.path, columns.as_deref());
+        schema::emit_text(&cli.path, columns.as_deref())?;
     } else if cli.kv_meta && cli.json {
         kv_meta::emit_json(&cli.path)?;
     } else if cli.kv_meta {

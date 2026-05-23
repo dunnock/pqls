@@ -47,7 +47,17 @@ pub fn get_logical_type_str(col: &ColumnDescriptor) -> Option<String> {
     None
 }
 
-pub fn emit_text(path: &Path) -> Result<()> {
+pub fn column_names(path: &Path) -> Result<Vec<String>> {
+    let file = File::open(path).with_context(|| format!("Cannot open {}", path.display()))?;
+    let reader = SerializedFileReader::new(file)?;
+    let meta = reader.metadata();
+    let schema_descr = meta.file_metadata().schema_descr();
+    Ok((0..schema_descr.num_columns())
+        .map(|i| schema_descr.column(i).name().to_string())
+        .collect())
+}
+
+pub fn emit_text(path: &Path, columns: Option<&[String]>) -> Result<()> {
     let file = File::open(path).with_context(|| format!("Cannot open {}", path.display()))?;
     let reader = SerializedFileReader::new(file)?;
     let meta = reader.metadata();
@@ -55,6 +65,11 @@ pub fn emit_text(path: &Path) -> Result<()> {
 
     for i in 0..schema_descr.num_columns() {
         let col = schema_descr.column(i);
+        if let Some(cols) = columns {
+            if !cols.iter().any(|c| c == col.name()) {
+                continue;
+            }
+        }
         match get_logical_type_str(&col) {
             Some(lt) => println!("{} {:?} {}", col.name(), col.physical_type(), lt),
             None => println!("{} {:?}", col.name(), col.physical_type()),
@@ -82,7 +97,7 @@ struct SchemaJson {
     fields: Vec<FieldJson>,
 }
 
-pub fn emit_json(path: &Path) -> Result<()> {
+pub fn emit_json(path: &Path, columns: Option<&[String]>) -> Result<()> {
     let abs_path = std::fs::canonicalize(path)
         .with_context(|| format!("Cannot resolve path {}", path.display()))?;
 
@@ -95,6 +110,11 @@ pub fn emit_json(path: &Path) -> Result<()> {
     let mut fields = Vec::new();
     for i in 0..schema_descr.num_columns() {
         let col = schema_descr.column(i);
+        if let Some(cols) = columns {
+            if !cols.iter().any(|c| c == col.name()) {
+                continue;
+            }
+        }
         let physical_type = format!("{:?}", col.physical_type());
         let logical_type = get_logical_type_str(&col);
 
