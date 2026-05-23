@@ -211,7 +211,7 @@ fn compute_scan_stats(path: &Path, columns: Option<&[String]>) -> anyhow::Result
     let col_names: Vec<String> = schema
         .iter_names()
         .filter(|name| {
-            columns.map_or(true, |cols| {
+            columns.is_none_or(|cols| {
                 cols.iter().any(|c| c.as_str() == name.as_str())
             })
         })

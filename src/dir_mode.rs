@@ -135,7 +135,7 @@ pub fn partition_stats(root: &Path, json_mode: bool) -> Result<()> {
         let reader = SerializedFileReader::new(file)?;
         let num_rows = reader.metadata().file_metadata().num_rows();
 
-        let stat = groups.entry(partition).or_insert_with(PartitionStat::default);
+        let stat = groups.entry(partition).or_default();
         stat.rows += num_rows;
         stat.files += 1;
         stat.size_bytes += file_size;
@@ -157,11 +157,10 @@ pub fn partition_stats(root: &Path, json_mode: bool) -> Result<()> {
     } else {
         let max_part_len = groups.keys().map(|k| k.len()).max().unwrap_or(9).max(9);
         println!(
-            "{:<width$}  {:>12}  {:>8}  {}",
+            "{:<width$}  {:>12}  {:>8}  size",
             "partition",
             "rows",
             "files",
-            "size",
             width = max_part_len
         );
         for (k, v) in &groups {

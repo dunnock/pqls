@@ -28,10 +28,8 @@ Stderr: warnings and errors only.
 ## Exit codes
 
 - `0` success
-- `1` file not found or not readable
-- `2` invalid parquet (corrupt footer)
-- `3` bad argument combination
-- `4` internal error (report a bug)
+- `1` file not found, not readable, or invalid parquet
+- `2` bad argument combination (user error)
 
 ## Agent patterns
 
