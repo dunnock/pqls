@@ -330,6 +330,31 @@ fn test_timestamp_alignment() {
         serde_json::from_str(json_text.lines().next().unwrap()).unwrap();
     let json_ts = json_obj["ts"].as_str().unwrap();
 
+    // scan-stats: apply same strftime as inspect.rs (after P6 fix)
+    let lf_scan = LazyFrame::scan_parquet(&path, ScanArgsParquet::default()).unwrap();
+    let agg_exprs = vec![
+        col("ts").min().alias("ts__min"),
+    ];
+    let mut stats_df = lf_scan.select(agg_exprs).collect().unwrap();
+    let dt_cast: Vec<Expr> = stats_df
+        .schema()
+        .iter()
+        .filter_map(|(name, dtype)| match dtype {
+            DataType::Datetime(_, _) => {
+                Some(col(name.as_str()).dt().strftime("%Y-%m-%dT%H:%M:%S%.fZ"))
+            }
+            _ => None,
+        })
+        .collect();
+    if !dt_cast.is_empty() {
+        stats_df = stats_df.lazy().with_columns(dt_cast).collect().unwrap();
+    }
+    let scan_ts = match stats_df.column("ts__min").unwrap().get(0).unwrap() {
+        AnyValue::String(s) => s.to_string(),
+        AnyValue::StringOwned(s) => s.to_string(),
+        other => other.to_string(),
+    };
+
     assert!(csv_ts.contains('T'), "CSV timestamp should use T separator: {csv_ts}");
     assert!(json_ts.contains('T'), "NDJSON timestamp should use T separator: {json_ts}");
 
@@ -337,6 +362,17 @@ fn test_timestamp_alignment() {
     assert!(!csv_ts.contains(".000000000"), "CSV should not have trailing zeros: {csv_ts}");
 
     assert!(json_ts.ends_with('Z'), "NDJSON timestamp should end with Z: {json_ts}");
+
+    assert!(scan_ts.contains('T'), "scan-stats timestamp should use T separator: {scan_ts}");
+    assert!(scan_ts.ends_with('Z'), "scan-stats timestamp should end with Z: {scan_ts}");
+    assert_eq!(
+        scan_ts, json_ts,
+        "scan-stats and NDJSON must produce identical timestamp strings"
+    );
+    assert_eq!(
+        scan_ts, csv_ts,
+        "scan-stats and CSV must produce identical timestamp strings"
+    );
 }
 
 #[test]

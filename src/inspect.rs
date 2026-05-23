@@ -136,7 +136,7 @@ fn print_detail(
                 .iter()
                 .filter_map(|(name, dtype)| match dtype {
                     DataType::Datetime(_, _) => {
-                        Some(col(name.as_str()).dt().strftime("%Y-%m-%dT%H:%M:%SZ"))
+                        Some(col(name.as_str()).dt().strftime("%Y-%m-%dT%H:%M:%S%.fZ"))
                     }
                     _ => None,
                 })
