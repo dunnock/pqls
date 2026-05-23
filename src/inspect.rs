@@ -35,7 +35,7 @@ pub fn inspect_file(
                         c,
                         valid.join(", ")
                     );
-                    std::process::exit(3);
+                    std::process::exit(2);
                 }
             }
         }

@@ -90,7 +90,7 @@ fn main() -> Result<()> {
         let code = match e.kind() {
             clap::error::ErrorKind::DisplayHelp
             | clap::error::ErrorKind::DisplayVersion => 0,
-            clap::error::ErrorKind::ArgumentConflict => 3,
+            clap::error::ErrorKind::ArgumentConflict => 2,
             _ => 2,
         };
         e.print().unwrap();
@@ -99,17 +99,17 @@ fn main() -> Result<()> {
 
     if cli.diff && cli.path_b.is_none() {
         eprintln!("error: --diff requires two path arguments: pqls --diff A.parquet B.parquet");
-        std::process::exit(3);
+        std::process::exit(2);
     }
 
     if cli.json && !cli.schema && !cli.kv_meta && !cli.check && !cli.partition_stats && !cli.diff {
         eprintln!("error: --json requires --schema, --kv-meta, --check, --partition-stats, or --diff");
-        std::process::exit(3);
+        std::process::exit(2);
     }
 
     if cli.partition_stats && !cli.recursive {
         eprintln!("error: --partition-stats requires -r");
-        std::process::exit(3);
+        std::process::exit(2);
     }
 
     if let Some(n) = cli.sample {
@@ -117,13 +117,13 @@ fn main() -> Result<()> {
             eprintln!(
                 "error: --sample requires --ndjson or --csv; did you mean: pqls --ndjson --sample {n} FILE"
             );
-            std::process::exit(3);
+            std::process::exit(2);
         }
     }
 
     if cli.scan_stats && !cli.detail {
         eprintln!("error: --scan-stats requires -d / --detail");
-        std::process::exit(3);
+        std::process::exit(2);
     }
 
     let columns: Option<Vec<String>> = cli.columns
@@ -134,13 +134,13 @@ fn main() -> Result<()> {
         let path_b = cli.path_b.as_ref().unwrap();
         let outcome = diff::diff_schemas(&cli.path, path_b).unwrap_or_else(|e| {
             eprintln!("error: {e}");
-            std::process::exit(2);
+            std::process::exit(1);
         });
         let identical = matches!(outcome, diff::DiffOutcome::Identical);
         if cli.json {
             diff::emit_json(&outcome).unwrap_or_else(|e| {
                 eprintln!("error: {e}");
-                std::process::exit(2);
+                std::process::exit(1);
             });
         } else {
             diff::emit_text(&outcome);

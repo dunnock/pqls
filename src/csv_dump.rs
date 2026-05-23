@@ -17,7 +17,7 @@ pub fn dump_csv(path: &Path, head: Option<u64>, columns: Option<Vec<String>>) ->
                     c,
                     valid.join(", ")
                 );
-                std::process::exit(3);
+                std::process::exit(2);
             }
         }
         let exprs: Vec<Expr> = cols.iter().map(|c| col(c.as_str())).collect();

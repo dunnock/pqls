@@ -440,7 +440,7 @@ fn test_partition_stats_json_no_crash() {
 
 #[test]
 fn test_partition_stats_without_recursive_exits() {
-    // Verify the validation logic: --partition-stats without -r should exit 3
+    // Verify the validation logic: --partition-stats without -r should exit 2
     // (tested via the flag check in main.rs — here we just verify the parsing logic)
     let parts: Vec<(String, String)> = vec![
         ("year=2024/month=01".to_string(), "year".to_string()),
