@@ -52,10 +52,8 @@ pub fn diff_schemas(path_a: &Path, path_b: &Path) -> Result<DiffOutcome> {
     let fields_a = read_fields(path_a)?;
     let fields_b = read_fields(path_b)?;
 
-    let map_a: HashMap<&str, &TypeInfo> =
-        fields_a.iter().map(|(n, t)| (n.as_str(), t)).collect();
-    let map_b: HashMap<&str, &TypeInfo> =
-        fields_b.iter().map(|(n, t)| (n.as_str(), t)).collect();
+    let map_a: HashMap<&str, &TypeInfo> = fields_a.iter().map(|(n, t)| (n.as_str(), t)).collect();
+    let map_b: HashMap<&str, &TypeInfo> = fields_b.iter().map(|(n, t)| (n.as_str(), t)).collect();
 
     let mut seen: HashSet<&str> = HashSet::new();
     let mut union_order: Vec<String> = Vec::new();
@@ -77,10 +75,16 @@ pub fn diff_schemas(path_a: &Path, path_b: &Path) -> Result<DiffOutcome> {
     for name in &union_order {
         match (map_a.get(name.as_str()), map_b.get(name.as_str())) {
             (Some(ta), None) => {
-                removed.push(FieldDiff { name: name.clone(), type_info: (*ta).clone() });
+                removed.push(FieldDiff {
+                    name: name.clone(),
+                    type_info: (*ta).clone(),
+                });
             }
             (None, Some(tb)) => {
-                added.push(FieldDiff { name: name.clone(), type_info: (*tb).clone() });
+                added.push(FieldDiff {
+                    name: name.clone(),
+                    type_info: (*tb).clone(),
+                });
             }
             (Some(ta), Some(tb)) if ta != tb => {
                 changed.push(FieldChanged {
@@ -96,21 +100,38 @@ pub fn diff_schemas(path_a: &Path, path_b: &Path) -> Result<DiffOutcome> {
     if added.is_empty() && removed.is_empty() && changed.is_empty() {
         Ok(DiffOutcome::Identical)
     } else {
-        Ok(DiffOutcome::Different { added, removed, changed, union_order })
+        Ok(DiffOutcome::Different {
+            added,
+            removed,
+            changed,
+            union_order,
+        })
     }
 }
 
 pub fn emit_text(outcome: &DiffOutcome) {
-    let DiffOutcome::Different { added, removed, changed, union_order } = outcome else {
+    let DiffOutcome::Different {
+        added,
+        removed,
+        changed,
+        union_order,
+    } = outcome
+    else {
         return;
     };
 
-    let removed_map: HashMap<&str, &TypeInfo> =
-        removed.iter().map(|f| (f.name.as_str(), &f.type_info)).collect();
-    let added_map: HashMap<&str, &TypeInfo> =
-        added.iter().map(|f| (f.name.as_str(), &f.type_info)).collect();
-    let changed_map: HashMap<&str, (&TypeInfo, &TypeInfo)> =
-        changed.iter().map(|f| (f.name.as_str(), (&f.from, &f.to))).collect();
+    let removed_map: HashMap<&str, &TypeInfo> = removed
+        .iter()
+        .map(|f| (f.name.as_str(), &f.type_info))
+        .collect();
+    let added_map: HashMap<&str, &TypeInfo> = added
+        .iter()
+        .map(|f| (f.name.as_str(), &f.type_info))
+        .collect();
+    let changed_map: HashMap<&str, (&TypeInfo, &TypeInfo)> = changed
+        .iter()
+        .map(|f| (f.name.as_str(), (&f.from, &f.to)))
+        .collect();
 
     for name in union_order {
         if let Some(t) = removed_map.get(name.as_str()) {
@@ -131,7 +152,12 @@ pub fn emit_json(outcome: &DiffOutcome) -> Result<()> {
             "removed": [],
             "changed": [],
         }),
-        DiffOutcome::Different { added, removed, changed, .. } => {
+        DiffOutcome::Different {
+            added,
+            removed,
+            changed,
+            ..
+        } => {
             serde_json::json!({
                 "identical": false,
                 "added":   added,

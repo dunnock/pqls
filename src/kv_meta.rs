@@ -31,7 +31,11 @@ pub fn emit_text(path: &Path) -> Result<()> {
                             schema.fields().len()
                         );
                         for field in schema.fields() {
-                            let nullable = if field.is_nullable() { " [nullable]" } else { "" };
+                            let nullable = if field.is_nullable() {
+                                " [nullable]"
+                            } else {
+                                ""
+                            };
                             println!("  {}: {}{}", field.name(), field.data_type(), nullable);
                         }
                         continue;
@@ -54,8 +58,11 @@ pub fn emit_text(path: &Path) -> Result<()> {
                                 schema.fields().len()
                             );
                             for field in schema.fields() {
-                                let nullable =
-                                    if field.is_nullable() { " [nullable]" } else { "" };
+                                let nullable = if field.is_nullable() {
+                                    " [nullable]"
+                                } else {
+                                    ""
+                                };
                                 println!("  {}: {}{}", field.name(), field.data_type(), nullable);
                             }
                             continue;

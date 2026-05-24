@@ -15,7 +15,9 @@ fn main() {
     ]
     .unwrap();
 
-    let path = std::env::args().nth(1).unwrap_or_else(|| "/tmp/smoke_test.parquet".to_string());
+    let path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "/tmp/smoke_test.parquet".to_string());
     let file = File::create(&path).unwrap();
     ParquetWriter::new(file).finish(&mut df).unwrap();
     println!("wrote {path}");
@@ -28,8 +30,12 @@ fn main() {
 
     let mut df1 = df!["x" => [1i64, 2]].unwrap();
     let mut df2 = df!["x" => [3i64, 4, 5]].unwrap();
-    ParquetWriter::new(File::create(format!("{dir1}/data.parquet")).unwrap()).finish(&mut df1).unwrap();
-    ParquetWriter::new(File::create(format!("{dir2}/data.parquet")).unwrap()).finish(&mut df2).unwrap();
+    ParquetWriter::new(File::create(format!("{dir1}/data.parquet")).unwrap())
+        .finish(&mut df1)
+        .unwrap();
+    ParquetWriter::new(File::create(format!("{dir2}/data.parquet")).unwrap())
+        .finish(&mut df2)
+        .unwrap();
     println!("wrote partition dir /tmp/smoke_dir/");
 
     // Write a no-stats parquet for scan-stats smoke testing (simulates Arrow writer output)
@@ -48,12 +54,16 @@ fn main() {
     let mut rg = writer.next_row_group().unwrap();
     {
         let mut col = rg.next_column().unwrap().unwrap();
-        col.typed::<Int64Type>().write_batch(&[1i64, 2, 2, 3, 3, 3], None, None).unwrap();
+        col.typed::<Int64Type>()
+            .write_batch(&[1i64, 2, 2, 3, 3, 3], None, None)
+            .unwrap();
         col.close().unwrap();
     }
     {
         let mut col = rg.next_column().unwrap().unwrap();
-        col.typed::<Int64Type>().write_batch(&[10i64, 20, 20, 30, 30, 30], None, None).unwrap();
+        col.typed::<Int64Type>()
+            .write_batch(&[10i64, 20, 20, 30, 30, 30], None, None)
+            .unwrap();
         col.close().unwrap();
     }
     rg.close().unwrap();

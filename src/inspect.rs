@@ -48,7 +48,12 @@ pub fn inspect_file(
         println!("  file size:   {}", format_size(file_size, BINARY));
         println!("  schema:");
     } else {
-        println!("{}\t{}\t{}", path.display(), file_meta.num_rows(), format_size(file_size, BINARY));
+        println!(
+            "{}\t{}\t{}",
+            path.display(),
+            file_meta.num_rows(),
+            format_size(file_size, BINARY)
+        );
     }
 
     if !quiet {
@@ -190,12 +195,16 @@ fn print_detail(
                     .map(|raw| raw - if null_count_i64 > 0 { 1 } else { 0 })
                     .map(|n| n.to_string())
                     .unwrap_or_else(|| "?".to_string());
-                println!("    {} → min={} max={} nulls={} n_distinct={}",
-                    name, min_str, max_str, null_str, n_distinct_str);
+                println!(
+                    "    {} → min={} max={} nulls={} n_distinct={}",
+                    name, min_str, max_str, null_str, n_distinct_str
+                );
             }
         } else {
             println!("# note: no column statistics — file was written without stats (common with Arrow writers)");
-            println!("#       run with --scan-stats to compute min/max from data (reads full file)");
+            println!(
+                "#       run with --scan-stats to compute min/max from data (reads full file)"
+            );
         }
     }
 
@@ -210,11 +219,7 @@ fn compute_scan_stats(path: &Path, columns: Option<&[String]>) -> anyhow::Result
 
     let col_names: Vec<String> = schema
         .iter_names()
-        .filter(|name| {
-            columns.is_none_or(|cols| {
-                cols.iter().any(|c| c.as_str() == name.as_str())
-            })
-        })
+        .filter(|name| columns.is_none_or(|cols| cols.iter().any(|c| c.as_str() == name.as_str())))
         .map(|n| n.to_string())
         .collect();
 
@@ -254,7 +259,10 @@ fn get_logical_type_str(col: &ColumnDescriptor) -> Option<String> {
                 };
                 return Some(s.to_string());
             }
-            LogicalType::Integer { bit_width, is_signed } => {
+            LogicalType::Integer {
+                bit_width,
+                is_signed,
+            } => {
                 return Some(format!("INT({}, {})", bit_width, is_signed));
             }
             LogicalType::Decimal { precision, scale } => {
@@ -321,8 +329,10 @@ fn format_statistics(stats: &Statistics) -> String {
         ),
         Statistics::ByteArray(s) => format!(
             "min={:?} max={:?} nulls={}",
-            s.min_opt().map(|v| String::from_utf8_lossy(v.data()).into_owned()),
-            s.max_opt().map(|v| String::from_utf8_lossy(v.data()).into_owned()),
+            s.min_opt()
+                .map(|v| String::from_utf8_lossy(v.data()).into_owned()),
+            s.max_opt()
+                .map(|v| String::from_utf8_lossy(v.data()).into_owned()),
             s.null_count_opt().unwrap_or(0)
         ),
         Statistics::Boolean(s) => format!(
@@ -331,14 +341,8 @@ fn format_statistics(stats: &Statistics) -> String {
             s.max_opt(),
             s.null_count_opt().unwrap_or(0)
         ),
-        Statistics::FixedLenByteArray(s) => format!(
-            "nulls={}",
-            s.null_count_opt().unwrap_or(0)
-        ),
-        Statistics::Int96(s) => format!(
-            "nulls={}",
-            s.null_count_opt().unwrap_or(0)
-        ),
+        Statistics::FixedLenByteArray(s) => format!("nulls={}", s.null_count_opt().unwrap_or(0)),
+        Statistics::Int96(s) => format!("nulls={}", s.null_count_opt().unwrap_or(0)),
     }
 }
 
@@ -364,6 +368,9 @@ mod tests {
     fn strip_trailing_dot_zero_removes_suffix() {
         assert_eq!(strip_trailing_dot_zero("42.0".into()), "42");
         assert_eq!(strip_trailing_dot_zero("3.14".into()), "3.14");
-        assert_eq!(strip_trailing_dot_zero("2024-01-01T00:00:00Z".into()), "2024-01-01T00:00:00Z");
+        assert_eq!(
+            strip_trailing_dot_zero("2024-01-01T00:00:00Z".into()),
+            "2024-01-01T00:00:00Z"
+        );
     }
 }

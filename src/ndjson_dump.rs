@@ -12,8 +12,11 @@ pub fn dump_ndjson(
     let mut df = if let Some(n) = sample {
         let mut df = crate::sample::sample_lazy(path, n)?;
         if let Some(ref cols) = columns {
-            let valid: Vec<String> =
-                df.get_column_names().iter().map(|s| s.to_string()).collect();
+            let valid: Vec<String> = df
+                .get_column_names()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
             for c in cols {
                 if !valid.contains(c) {
                     eprintln!(
@@ -62,7 +65,9 @@ pub fn dump_ndjson(
     let cast_exprs: Vec<Expr> = schema
         .iter()
         .filter_map(|(name, dtype)| match dtype {
-            DataType::Datetime(_, _) => Some(col(name.as_str()).dt().strftime("%Y-%m-%dT%H:%M:%S%.fZ")),
+            DataType::Datetime(_, _) => {
+                Some(col(name.as_str()).dt().strftime("%Y-%m-%dT%H:%M:%S%.fZ"))
+            }
             _ => None,
         })
         .collect();

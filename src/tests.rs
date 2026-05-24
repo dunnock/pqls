@@ -26,7 +26,10 @@ fn test_inspect_file_default() {
 
     let output = capture_inspect(&path, false, false);
     assert!(output.contains("rows:"), "missing rows line: {output}");
-    assert!(output.contains('5'.to_string().as_str()), "row count missing: {output}");
+    assert!(
+        output.contains('5'.to_string().as_str()),
+        "row count missing: {output}"
+    );
     assert!(output.contains("schema:"), "missing schema: {output}");
     assert!(output.contains("id"), "missing column id: {output}");
     assert!(output.contains("name"), "missing column name: {output}");
@@ -50,9 +53,18 @@ fn test_csv_dump() {
 
     let first_line = csv_text.lines().next().unwrap();
     let headers: Vec<&str> = first_line.split(',').collect();
-    assert!(headers.contains(&"id"), "missing id in headers: {first_line}");
-    assert!(headers.contains(&"name"), "missing name in headers: {first_line}");
-    assert!(headers.contains(&"score"), "missing score in headers: {first_line}");
+    assert!(
+        headers.contains(&"id"),
+        "missing id in headers: {first_line}"
+    );
+    assert!(
+        headers.contains(&"name"),
+        "missing name in headers: {first_line}"
+    );
+    assert!(
+        headers.contains(&"score"),
+        "missing score in headers: {first_line}"
+    );
 }
 
 #[test]
@@ -68,8 +80,12 @@ fn test_directory_partition_discovery() {
 
     let path1 = part_a.join("data.parquet");
     let path2 = part_b.join("data.parquet");
-    ParquetWriter::new(File::create(&path1).unwrap()).finish(&mut df1).unwrap();
-    ParquetWriter::new(File::create(&path2).unwrap()).finish(&mut df2).unwrap();
+    ParquetWriter::new(File::create(&path1).unwrap())
+        .finish(&mut df1)
+        .unwrap();
+    ParquetWriter::new(File::create(&path2).unwrap())
+        .finish(&mut df2)
+        .unwrap();
 
     let mut found_files = Vec::new();
     let mut total_rows = 0i64;
@@ -82,7 +98,10 @@ fn test_directory_partition_discovery() {
         .filter_map(|e| e.ok())
         .filter(|e| {
             e.file_type().is_file()
-                && e.path().extension().map(|x| x == "parquet").unwrap_or(false)
+                && e.path()
+                    .extension()
+                    .map(|x| x == "parquet")
+                    .unwrap_or(false)
         })
     {
         let f = File::open(entry.path()).unwrap();
@@ -128,7 +147,11 @@ fn test_ndjson_dump() {
         .collect()
         .unwrap();
     assert_eq!(df.height(), 3);
-    let col_names: Vec<String> = df.get_column_names().iter().map(|s| s.to_string()).collect();
+    let col_names: Vec<String> = df
+        .get_column_names()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert!(col_names.iter().any(|n| n == "id"));
 }
 
@@ -143,7 +166,11 @@ fn test_ndjson_columns_projection() {
         .collect()
         .unwrap();
 
-    let cols: Vec<String> = df.get_column_names().iter().map(|s| s.to_string()).collect();
+    let cols: Vec<String> = df
+        .get_column_names()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert!(cols.iter().any(|n| n == "id"));
     assert!(cols.iter().any(|n| n == "name"));
     assert!(!cols.iter().any(|n| n == "score"));
@@ -172,7 +199,11 @@ fn test_sample_lazy_exact_count() {
     let df = crate::sample::sample_lazy(&path, 3).unwrap();
     assert_eq!(df.height(), 3, "sample_lazy should return exactly N rows");
     // schema must be preserved
-    let cols: Vec<String> = df.get_column_names().iter().map(|s| s.to_string()).collect();
+    let cols: Vec<String> = df
+        .get_column_names()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert!(cols.iter().any(|n| n == "id"));
     assert!(cols.iter().any(|n| n == "name"));
     assert!(cols.iter().any(|n| n == "score"));
@@ -185,7 +216,11 @@ fn test_sample_lazy_exceeds_rows() {
 
     // 10 > 5 rows in file — should return all 5
     let df = crate::sample::sample_lazy(&path, 10).unwrap();
-    assert_eq!(df.height(), 5, "sample exceeding row count should return all rows");
+    assert_eq!(
+        df.height(),
+        5,
+        "sample exceeding row count should return all rows"
+    );
 }
 
 #[test]
@@ -210,7 +245,11 @@ fn test_csv_dump_with_sample() {
 
     let lines: Vec<&str> = text.lines().collect();
     // 1 header + 3 data rows = 4 lines
-    assert_eq!(lines.len(), 4, "CSV: 1 header + 3 data rows expected, got:\n{text}");
+    assert_eq!(
+        lines.len(),
+        4,
+        "CSV: 1 header + 3 data rows expected, got:\n{text}"
+    );
 }
 
 fn make_large_test_df() -> DataFrame {
@@ -229,14 +268,21 @@ fn test_csv_sample_line_count() {
     let path = write_test_parquet(&dir, "big.parquet", &mut make_large_test_df());
 
     let df = crate::sample::sample_lazy(&path, 10).unwrap();
-    assert_eq!(df.height(), 10, "sample_lazy must return exactly 10 rows from a 100-row file");
+    assert_eq!(
+        df.height(),
+        10,
+        "sample_lazy must return exactly 10 rows from a 100-row file"
+    );
 
     let mut buf = Vec::new();
     CsvWriter::new(&mut buf).finish(&mut df.clone()).unwrap();
     let text = String::from_utf8(buf).unwrap();
     let line_count = text.lines().count();
     // wc -l counts newlines; CsvWriter adds trailing newline so lines() == wc -l
-    assert_eq!(line_count, 11, "CSV output must have 11 lines (1 header + 10 rows), got {line_count}:\n{text}");
+    assert_eq!(
+        line_count, 11,
+        "CSV output must have 11 lines (1 header + 10 rows), got {line_count}:\n{text}"
+    );
 }
 
 #[test]
@@ -276,16 +322,20 @@ fn test_timestamp_alignment() {
     let csv_cast_exprs: Vec<Expr> = schema
         .iter()
         .filter_map(|(name, dtype)| match dtype {
-            DataType::Datetime(_, _) => Some(
-                col(name.as_str())
-                    .cast(DataType::Datetime(TimeUnit::Microseconds, Some("UTC".into()))),
-            ),
+            DataType::Datetime(_, _) => Some(col(name.as_str()).cast(DataType::Datetime(
+                TimeUnit::Microseconds,
+                Some("UTC".into()),
+            ))),
             _ => None,
         })
         .collect();
     let mut df_csv = df.clone();
     if !csv_cast_exprs.is_empty() {
-        df_csv = df_csv.lazy().with_columns(csv_cast_exprs).collect().unwrap();
+        df_csv = df_csv
+            .lazy()
+            .with_columns(csv_cast_exprs)
+            .collect()
+            .unwrap();
     }
 
     // Apply NDJSON datetime strftime (same logic as ndjson_dump.rs)
@@ -293,17 +343,19 @@ fn test_timestamp_alignment() {
     let ndjson_cast_exprs: Vec<Expr> = schema
         .iter()
         .filter_map(|(name, dtype)| match dtype {
-            DataType::Datetime(_, _) => Some(
-                col(name.as_str())
-                    .dt()
-                    .strftime("%Y-%m-%dT%H:%M:%S%.fZ"),
-            ),
+            DataType::Datetime(_, _) => {
+                Some(col(name.as_str()).dt().strftime("%Y-%m-%dT%H:%M:%S%.fZ"))
+            }
             _ => None,
         })
         .collect();
     let mut df_json = df.clone();
     if !ndjson_cast_exprs.is_empty() {
-        df_json = df_json.lazy().with_columns(ndjson_cast_exprs).collect().unwrap();
+        df_json = df_json
+            .lazy()
+            .with_columns(ndjson_cast_exprs)
+            .collect()
+            .unwrap();
     }
 
     // Write CSV to buffer
@@ -332,9 +384,7 @@ fn test_timestamp_alignment() {
 
     // scan-stats: apply same strftime as inspect.rs (after P6 fix)
     let lf_scan = LazyFrame::scan_parquet(&path, ScanArgsParquet::default()).unwrap();
-    let agg_exprs = vec![
-        col("ts").min().alias("ts__min"),
-    ];
+    let agg_exprs = vec![col("ts").min().alias("ts__min")];
     let mut stats_df = lf_scan.select(agg_exprs).collect().unwrap();
     let dt_cast: Vec<Expr> = stats_df
         .schema()
@@ -355,16 +405,37 @@ fn test_timestamp_alignment() {
         other => other.to_string(),
     };
 
-    assert!(csv_ts.contains('T'), "CSV timestamp should use T separator: {csv_ts}");
-    assert!(json_ts.contains('T'), "NDJSON timestamp should use T separator: {json_ts}");
+    assert!(
+        csv_ts.contains('T'),
+        "CSV timestamp should use T separator: {csv_ts}"
+    );
+    assert!(
+        json_ts.contains('T'),
+        "NDJSON timestamp should use T separator: {json_ts}"
+    );
 
-    assert!(csv_ts.ends_with('Z'), "CSV timestamp should end with Z: {csv_ts}");
-    assert!(!csv_ts.contains(".000000000"), "CSV should not have trailing zeros: {csv_ts}");
+    assert!(
+        csv_ts.ends_with('Z'),
+        "CSV timestamp should end with Z: {csv_ts}"
+    );
+    assert!(
+        !csv_ts.contains(".000000000"),
+        "CSV should not have trailing zeros: {csv_ts}"
+    );
 
-    assert!(json_ts.ends_with('Z'), "NDJSON timestamp should end with Z: {json_ts}");
+    assert!(
+        json_ts.ends_with('Z'),
+        "NDJSON timestamp should end with Z: {json_ts}"
+    );
 
-    assert!(scan_ts.contains('T'), "scan-stats timestamp should use T separator: {scan_ts}");
-    assert!(scan_ts.ends_with('Z'), "scan-stats timestamp should end with Z: {scan_ts}");
+    assert!(
+        scan_ts.contains('T'),
+        "scan-stats timestamp should use T separator: {scan_ts}"
+    );
+    assert!(
+        scan_ts.ends_with('Z'),
+        "scan-stats timestamp should end with Z: {scan_ts}"
+    );
     assert_eq!(
         scan_ts, json_ts,
         "scan-stats and NDJSON must produce identical timestamp strings"
@@ -402,7 +473,11 @@ fn test_csv_columns_projection() {
         .collect()
         .unwrap();
 
-    let cols: Vec<String> = df.get_column_names().iter().map(|s| s.to_string()).collect();
+    let cols: Vec<String> = df
+        .get_column_names()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert_eq!(cols.len(), 2);
     assert!(cols.iter().any(|n| n == "id"));
     assert!(cols.iter().any(|n| n == "score"));
@@ -531,7 +606,11 @@ fn test_partition_stats_no_crash() {
         .unwrap();
 
     let result = crate::dir_mode::partition_stats(dir.path(), false);
-    assert!(result.is_ok(), "partition_stats should not error: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "partition_stats should not error: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -546,7 +625,11 @@ fn test_partition_stats_json_no_crash() {
         .unwrap();
 
     let result = crate::dir_mode::partition_stats(dir.path(), true);
-    assert!(result.is_ok(), "partition_stats --json should not error: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "partition_stats --json should not error: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -614,7 +697,12 @@ fn test_n_distinct_aggregation() {
         AnyValue::Int64(n) => n,
         _ => panic!("expected Int64"),
     };
-    let score_nd_raw: i64 = match stats_df.column("score__n_distinct").unwrap().get(0).unwrap() {
+    let score_nd_raw: i64 = match stats_df
+        .column("score__n_distinct")
+        .unwrap()
+        .get(0)
+        .unwrap()
+    {
         AnyValue::Int64(n) => n,
         _ => panic!("expected Int64"),
     };
@@ -632,12 +720,17 @@ fn test_n_distinct_null_adjustment() {
     let s = Series::new("x".into(), vec![Some(1i64), Some(1), Some(2), None, None]);
     let mut df = DataFrame::new(vec![s.into()]).unwrap();
     let path = dir.path().join("nulls.parquet");
-    ParquetWriter::new(File::create(&path).unwrap()).finish(&mut df).unwrap();
+    ParquetWriter::new(File::create(&path).unwrap())
+        .finish(&mut df)
+        .unwrap();
 
     let lf = LazyFrame::scan_parquet(&path, ScanArgsParquet::default()).unwrap();
     let agg_exprs = vec![
         col("x").null_count().cast(DataType::Int64).alias("x__null"),
-        col("x").n_unique().cast(DataType::Int64).alias("x__n_distinct"),
+        col("x")
+            .n_unique()
+            .cast(DataType::Int64)
+            .alias("x__n_distinct"),
     ];
     let stats_df = lf.select(agg_exprs).collect().unwrap();
 
@@ -686,7 +779,12 @@ fn test_diff_added_column() {
 
     let outcome = crate::diff::diff_schemas(&path_a, &path_b).unwrap();
     match outcome {
-        crate::diff::DiffOutcome::Different { added, removed, changed, .. } => {
+        crate::diff::DiffOutcome::Different {
+            added,
+            removed,
+            changed,
+            ..
+        } => {
             assert_eq!(added.len(), 1, "should have 1 added column");
             assert_eq!(added[0].name, "extra");
             assert!(removed.is_empty(), "should have no removed columns");
@@ -711,7 +809,12 @@ fn test_diff_removed_column() {
 
     let outcome = crate::diff::diff_schemas(&path_a, &path_b).unwrap();
     match outcome {
-        crate::diff::DiffOutcome::Different { added, removed, changed, .. } => {
+        crate::diff::DiffOutcome::Different {
+            added,
+            removed,
+            changed,
+            ..
+        } => {
             assert!(added.is_empty(), "should have no added columns");
             assert_eq!(removed.len(), 1, "should have 1 removed column");
             assert_eq!(removed[0].name, "score");
@@ -836,9 +939,15 @@ fn capture_inspect(path: &PathBuf, _detail: bool, quiet: bool) -> String {
         let schema_descr = meta.file_metadata().schema_descr();
         for i in 0..schema_descr.num_columns() {
             let col = schema_descr.column(i);
-            writeln!(out, "    [{}] {} ({:?})", i, col.name(), col.physical_type()).unwrap();
+            writeln!(
+                out,
+                "    [{}] {} ({:?})",
+                i,
+                col.name(),
+                col.physical_type()
+            )
+            .unwrap();
         }
     }
     out
 }
-

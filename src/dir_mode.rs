@@ -53,7 +53,12 @@ pub fn list_directory(root: &Path, detail: bool, recursive: bool, quiet: bool) -
                 format_size(file_size, BINARY)
             );
         } else {
-            println!("{}\t{}\t{}", path.display(), num_rows, format_size(file_size, BINARY));
+            println!(
+                "{}\t{}\t{}",
+                path.display(),
+                num_rows,
+                format_size(file_size, BINARY)
+            );
         }
 
         if detail {
@@ -88,7 +93,11 @@ fn parse_hive_partition(file_path: &Path, root: &Path) -> String {
         .components()
         .filter_map(|c| {
             let s = c.as_os_str().to_str()?;
-            if s.contains('=') { Some(s) } else { None }
+            if s.contains('=') {
+                Some(s)
+            } else {
+                None
+            }
         })
         .collect();
     if parts.is_empty() {

@@ -47,10 +47,10 @@ pub fn dump_csv(
     let cast_exprs: Vec<Expr> = schema
         .iter()
         .filter_map(|(name, dtype)| match dtype {
-            DataType::Datetime(_, _) => Some(
-                col(name.as_str())
-                    .cast(DataType::Datetime(TimeUnit::Microseconds, Some("UTC".into()))),
-            ),
+            DataType::Datetime(_, _) => Some(col(name.as_str()).cast(DataType::Datetime(
+                TimeUnit::Microseconds,
+                Some("UTC".into()),
+            ))),
             _ => None,
         })
         .collect();
@@ -73,7 +73,11 @@ fn apply_column_projection(
     path: &Path,
 ) -> Result<()> {
     let Some(cols) = columns else { return Ok(()) };
-    let valid: Vec<String> = df.get_column_names().iter().map(|s| s.to_string()).collect();
+    let valid: Vec<String> = df
+        .get_column_names()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     for c in &cols {
         if !valid.contains(c) {
             eprintln!(
@@ -85,8 +89,8 @@ fn apply_column_projection(
         }
     }
     let col_strs: Vec<&str> = cols.iter().map(|s| s.as_str()).collect();
-    *df = df.select(col_strs).with_context(|| {
-        format!("Failed to project columns for {}", path.display())
-    })?;
+    *df = df
+        .select(col_strs)
+        .with_context(|| format!("Failed to project columns for {}", path.display()))?;
     Ok(())
 }

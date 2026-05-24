@@ -22,7 +22,10 @@ pub fn get_logical_type_str(col: &ColumnDescriptor) -> Option<String> {
                 };
                 return Some(s.to_string());
             }
-            LogicalType::Integer { bit_width, is_signed } => {
+            LogicalType::Integer {
+                bit_width,
+                is_signed,
+            } => {
                 return Some(format!("INT({}, {})", bit_width, is_signed));
             }
             LogicalType::Decimal { precision, scale } => {
