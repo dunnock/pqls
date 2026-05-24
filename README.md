@@ -1,5 +1,9 @@
 # pqls
 
+![Release](https://github.com/dunnock/pqls/actions/workflows/release.yml/badge.svg)
+![Latest Release](https://img.shields.io/github/v/release/dunnock/pqls)
+![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
+
 A command-line tool for listing the contents and metadata of Apache Parquet files and partitioned parquet datasets, modelled on HDF5's `h5ls`.
 
 ## Install
@@ -11,19 +15,31 @@ curl -fsSL https://github.com/dunnock/pqls/releases/latest/download/install.sh |
 ## Usage
 
 ```
-pqls [OPTIONS] <PATH>
+pqls [OPTIONS] <PATH> [PATH_B]
 
 ARGS:
-  <PATH>            file or directory
+  <PATH>            path to a .parquet file or directory to inspect
+  [PATH_B]          second .parquet file for schema diff (required by --diff)
 
 OPTIONS:
-  -d, --detail      per-row-group stats, per-column min/max/nulls, partition layout
-  -r, --recursive   recurse into subdirectories
-      --csv         dump file contents as CSV to stdout
-      --head <N>    with --csv, output only first N rows (0 = all)
-  -q, --quiet       suppress decorative headers (machine-readable)
-  -h, --help
-  -V, --version
+      --diff                compare schemas of two files; exits 0 if identical, 1 if different
+  -d, --detail              show per-row-group column statistics (min/max/nulls)
+  -r, --recursive           recurse into a directory and list all .parquet files
+      --csv                 dump rows as CSV to stdout
+      --head <N>            limit output to the first N rows (applies to --csv and --ndjson)
+  -q, --quiet               suppress human-readable headers; emit tab-separated summary lines
+      --schema              print schema only (column names and types)
+      --json                emit output as JSON (works with --schema, --kv-meta, --check, --partition-stats, --diff)
+      --ndjson              stream rows as newline-delimited JSON (NDJSON)
+      --sample <N>          emit N randomly-sampled rows; requires --ndjson or --csv
+      --columns <COLS>      comma-separated list of column names to project (e.g. id,ts,value)
+      --kv-meta             print Parquet key-value metadata (writer version, custom properties)
+      --scan-stats          scan the full file to compute per-column min/max/nulls/n_distinct; requires -d
+      --partition-stats     aggregate row counts and file sizes across a Hive-partitioned directory; requires -r
+      --check               verify file integrity by reading the footer and all row groups
+      --deep                with --check: read every data page (slower but catches corrupt column data)
+  -h, --help                print help
+  -V, --version             print version
 ```
 
 ## Examples
@@ -147,10 +163,8 @@ pqls -q --recursive /data/events/ \
 
 Scripts should test `$?`:
 - `0` — success, output on stdout
-- `1` — file/path error
-- `2` — corrupt or invalid parquet
-- `3` — bad flag combination
-- `4` — internal bug (report at github.com/dunnock/pqls/issues)
+- `1` — file/path error or schema mismatch (with --diff)
+- `2` — corrupt or invalid parquet, or bad flag combination
 
 ## License
 
