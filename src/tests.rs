@@ -449,7 +449,7 @@ fn test_timestamp_alignment() {
 #[test]
 fn test_column_validation_unknown() {
     let valid = ["id", "name", "score"];
-    let requested = vec!["id".to_string(), "nonexistent".to_string()];
+    let requested = ["id".to_string(), "nonexistent".to_string()];
     let bad = requested.iter().find(|c| !valid.contains(&c.as_str()));
     assert_eq!(bad, Some(&"nonexistent".to_string()));
 }
@@ -457,7 +457,7 @@ fn test_column_validation_unknown() {
 #[test]
 fn test_column_validation_all_valid() {
     let valid = ["id", "name", "score"];
-    let requested = vec!["id".to_string(), "score".to_string()];
+    let requested = ["id".to_string(), "score".to_string()];
     let bad = requested.iter().find(|c| !valid.contains(&c.as_str()));
     assert!(bad.is_none());
 }
@@ -492,7 +492,7 @@ fn test_scan_stats_column_scoping() {
     // Simulate compute_scan_stats with columns=Some(["id"])
     let mut lf = LazyFrame::scan_parquet(&path, ScanArgsParquet::default()).unwrap();
     let schema = lf.collect_schema().unwrap();
-    let requested = vec!["id".to_string()];
+    let requested = ["id".to_string()];
     let col_names: Vec<String> = schema
         .iter_names()
         .filter(|name| requested.iter().any(|c| c.as_str() == name.as_str()))
