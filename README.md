@@ -12,34 +12,10 @@ A command-line tool for listing the contents and metadata of Apache Parquet file
 curl -fsSL https://github.com/dunnock/pqls/releases/latest/download/install.sh | sh
 ```
 
-## Usage
+### Or install with cargo:
 
-```
-pqls [OPTIONS] <PATH> [PATH_B]
-
-ARGS:
-  <PATH>            path to a .parquet file or directory to inspect
-  [PATH_B]          second .parquet file for schema diff (required by --diff)
-
-OPTIONS:
-      --diff                compare schemas of two files; exits 0 if identical, 1 if different
-  -d, --detail              show per-row-group column statistics (min/max/nulls)
-  -r, --recursive           recurse into a directory and list all .parquet files
-      --csv                 dump rows as CSV to stdout
-      --head <N>            limit output to the first N rows (applies to --csv and --ndjson)
-  -q, --quiet               suppress human-readable headers; emit tab-separated summary lines
-      --schema              print schema only (column names and types)
-      --json                emit output as JSON (works with --schema, --kv-meta, --check, --partition-stats, --diff)
-      --ndjson              stream rows as newline-delimited JSON (NDJSON)
-      --sample <N>          emit N randomly-sampled rows; requires --ndjson or --csv
-      --columns <COLS>      comma-separated list of column names to project (e.g. id,ts,value)
-      --kv-meta             print Parquet key-value metadata (writer version, custom properties)
-      --scan-stats          scan the full file to compute per-column min/max/nulls/n_distinct; requires -d
-      --partition-stats     aggregate row counts and file sizes across a Hive-partitioned directory; requires -r
-      --check               verify file integrity by reading the footer and all row groups
-      --deep                with --check: read every data page (slower but catches corrupt column data)
-  -h, --help                print help
-  -V, --version             print version
+```sh
+cargo install pqls
 ```
 
 ## Examples
@@ -71,6 +47,36 @@ pqls -d -r /path/to/dataset/
 pqls -q data.parquet
 ```
 
+## CLI
+
+```
+pqls [OPTIONS] <PATH> [PATH_B]
+
+ARGS:
+  <PATH>            path to a .parquet file or directory to inspect
+  [PATH_B]          second .parquet file for schema diff (required by --diff)
+
+OPTIONS:
+      --diff                compare schemas of two files; exits 0 if identical, 1 if different
+  -d, --detail              show per-row-group column statistics (min/max/nulls)
+  -r, --recursive           recurse into a directory and list all .parquet files
+      --csv                 dump rows as CSV to stdout
+      --head <N>            limit output to the first N rows (applies to --csv and --ndjson)
+  -q, --quiet               suppress human-readable headers; emit tab-separated summary lines
+      --schema              print schema only (column names and types)
+      --json                emit output as JSON (works with --schema, --kv-meta, --check, --partition-stats, --diff)
+      --ndjson              stream rows as newline-delimited JSON (NDJSON)
+      --sample <N>          emit N randomly-sampled rows; requires --ndjson or --csv
+      --columns <COLS>      comma-separated list of column names to project (e.g. id,ts,value)
+      --kv-meta             print Parquet key-value metadata (writer version, custom properties)
+      --scan-stats          scan the full file to compute per-column min/max/nulls/n_distinct; requires -d
+      --partition-stats     aggregate row counts and file sizes across a Hive-partitioned directory; requires -r
+      --check               verify file integrity by reading the footer and all row groups
+      --deep                with --check: read every data page (slower but catches corrupt column data)
+  -h, --help                print help
+  -V, --version             print version
+```
+
 ## Why pqls?
 
 **Static binary.** No JVM, no Python interpreter, no `pip install`. Drop the binary on
@@ -91,6 +97,8 @@ agents inspect schema and rows without parsing human text. See `SKILL.md` for pa
 ```sh
 curl -fsSL https://github.com/dunnock/pqls/releases/latest/download/install.sh | sh
 ```
+
+**Fast:**
 
 | Tool | Runtime | Startup | Schema dump | Stats | Pipe-composable |
 |------|---------|---------|-------------|-------|-----------------|
