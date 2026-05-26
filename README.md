@@ -174,6 +174,32 @@ Scripts should test `$?`:
 - `1` — file/path error or schema mismatch (with --diff)
 - `2` — corrupt or invalid parquet, or bad flag combination
 
+## Releasing
+
+```sh
+# default: minor bump (e.g. 0.5.1 → 0.6.0)
+make release
+
+# or override the bump type:
+make release BUMP=patch
+make release BUMP=major
+
+# preview what would happen — no side effects:
+make release-dry-run
+```
+
+**Requirements:** run from your host (not a container), on the `main` branch with a clean
+working tree that is in sync with `origin/main`. A crates.io token must be configured via
+`cargo login` or the `CARGO_REGISTRY_TOKEN` environment variable.
+
+The existing `.github/workflows/release.yml` builds multi-platform release binaries on tag
+push — you do **not** need to create the GitHub release manually. `make release` commits,
+tags, pushes, and publishes in one shot.
+
+Recovery helpers (normally not needed):
+- `make release-resume` — push + publish if the local commit/tag exist but push previously failed
+- `make publish` — re-run `cargo publish` only (tag already on GitHub)
+
 ## License
 
 Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE) at your option.
