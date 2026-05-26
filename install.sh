@@ -8,11 +8,8 @@ BIN_NAME="pqls"
 # Detect OS
 OS="$(uname -s)"
 case "$OS" in
-    Linux) OS_NAME="linux" ;;
-    Darwin)
-        echo "Error: macOS is not supported in this release. Linux only." >&2
-        exit 1
-        ;;
+    Linux)  OS_NAME="linux" ;;
+    Darwin) OS_NAME="darwin" ;;
     *)
         echo "Error: Unsupported OS: $OS" >&2
         exit 1
@@ -31,7 +28,7 @@ case "$ARCH" in
         ;;
 esac
 
-ASSET_NAME="${BIN_NAME}-${OS_NAME}-${ARCH_NAME}"
+ASSET_NAME="${BIN_NAME}-${OS_NAME}-${ARCH_NAME}.tar.gz"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${ASSET_NAME}"
 
 INSTALL_PATH="${INSTALL_DIR}/${BIN_NAME}"
@@ -46,14 +43,15 @@ else
     exit 1
 fi
 
-chmod +x "/tmp/${ASSET_NAME}"
+tar -xzf "/tmp/${ASSET_NAME}" -C /tmp
+rm -f "/tmp/${ASSET_NAME}"
 
 # Install (use sudo only if needed)
 if [ -w "$INSTALL_DIR" ]; then
-    mv "/tmp/${ASSET_NAME}" "$INSTALL_PATH"
+    mv "/tmp/${BIN_NAME}" "$INSTALL_PATH"
 else
     echo "Installing to ${INSTALL_PATH} (requires sudo)..."
-    sudo mv "/tmp/${ASSET_NAME}" "$INSTALL_PATH"
+    sudo mv "/tmp/${BIN_NAME}" "$INSTALL_PATH"
 fi
 
 echo "Installed ${BIN_NAME} to ${INSTALL_PATH}"

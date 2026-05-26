@@ -174,6 +174,37 @@ Scripts should test `$?`:
 - `1` — file/path error or schema mismatch (with --diff)
 - `2` — corrupt or invalid parquet, or bad flag combination
 
+## Releases
+
+Pre-built binaries are attached to every [GitHub release](https://github.com/dunnock/pqls/releases):
+
+| Platform | Asset |
+|----------|-------|
+| Linux x86_64 | `pqls-linux-x86_64.tar.gz` |
+| Linux aarch64 | `pqls-linux-aarch64.tar.gz` |
+| macOS Intel (x86_64) | `pqls-darwin-x86_64.tar.gz` |
+| macOS Apple Silicon (aarch64) | `pqls-darwin-aarch64.tar.gz` |
+| Windows x86_64 | `pqls-windows-x86_64.zip` |
+
+**One-liner install (Linux and macOS):**
+```sh
+curl -fsSL https://github.com/dunnock/pqls/releases/latest/download/install.sh | sh
+```
+
+**Install from crates.io:**
+```sh
+cargo install pqls
+```
+This compiles from source and works on any platform with a Rust toolchain. No runtime
+dependencies — pqls is a fully static binary on Linux (musl not required; glibc is fine).
+
+**System requirements:** none beyond a standard Linux/macOS/Windows environment.
+pqls does not require hugepages, elevated privileges, or any kernel tuning.
+
+**`CRATES_IO_TOKEN` secret (maintainers only):** the release workflow publishes to
+crates.io automatically on tag push. Add the secret once in the GitHub repo settings
+under *Settings → Secrets and variables → Actions* with the name `CRATES_IO_TOKEN`.
+
 ## Releasing
 
 ```sh
@@ -189,12 +220,11 @@ make release-dry-run
 ```
 
 **Requirements:** run from your host (not a container), on the `main` branch with a clean
-working tree that is in sync with `origin/main`. A crates.io token must be configured via
-`cargo login` or the `CARGO_REGISTRY_TOKEN` environment variable.
+working tree that is in sync with `origin/main`.
 
-The existing `.github/workflows/release.yml` builds multi-platform release binaries on tag
-push — you do **not** need to create the GitHub release manually. `make release` commits,
-tags, pushes, and publishes in one shot.
+`.github/workflows/release.yml` fires on tag push, builds multi-platform binaries, creates
+the GitHub release, and publishes to crates.io — you do **not** need to do any of that
+manually. `make release` commits, tags, and pushes; the workflow does the rest.
 
 Recovery helpers (normally not needed):
 - `make release-resume` — push + publish if the local commit/tag exist but push previously failed
