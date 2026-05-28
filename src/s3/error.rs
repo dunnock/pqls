@@ -83,9 +83,15 @@ pub fn from_head_err(err: SdkError<HeadObjectError>, location: &str) -> S3Error 
             }
             _ => {}
         }
-        return S3Error::Network {
-            location: location.to_string(),
-            source: se.err().to_string(),
+        // HEAD responses carry no body, so the SDK can't extract the error code.
+        // Fall back to the HTTP status code for the most important cases.
+        return match se.raw().status().as_u16() {
+            403 => S3Error::AccessDenied(location.to_string()),
+            404 => S3Error::ObjectNotFound(location.to_string()),
+            _ => S3Error::Network {
+                location: location.to_string(),
+                source: se.err().to_string(),
+            },
         };
     }
     S3Error::Network {

@@ -14,7 +14,16 @@ use crate::{schema, Cli};
 
 pub async fn run_s3_path(path: S3Path, cli: &Cli) -> Result<()> {
     let config = auth::load_aws_config().await?;
-    let client = aws_sdk_s3::Client::new(&config);
+    // Use path-style addressing when a custom endpoint is set (e.g. for local testing).
+    let client = if config.endpoint_url().is_some() {
+        aws_sdk_s3::Client::from_conf(
+            aws_sdk_s3::config::Builder::from(&config)
+                .force_path_style(true)
+                .build(),
+        )
+    } else {
+        aws_sdk_s3::Client::new(&config)
+    };
 
     match path {
         S3Path::Object { bucket, key } => {
