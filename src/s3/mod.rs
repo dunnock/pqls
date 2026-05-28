@@ -1,11 +1,43 @@
 pub mod auth;
+pub mod error;
+pub mod footer;
+pub mod list;
 pub mod path;
+pub mod schema_brief;
 
 pub use path::S3Path;
 
 use anyhow::Result;
-use crate::Cli;
+use parquet::file::reader::{FileReader, SerializedFileReader};
 
-pub async fn run_s3_path(_path: S3Path, _cli: &Cli) -> Result<()> {
-    todo!("S3 operations not yet implemented — see s3-impl-list-and-schema task")
+use crate::{schema, Cli};
+
+pub async fn run_s3_path(path: S3Path, cli: &Cli) -> Result<()> {
+    let config = auth::load_aws_config().await?;
+    let client = aws_sdk_s3::Client::new(&config);
+
+    match path {
+        S3Path::Object { bucket, key } => {
+            let s3_url = format!("s3://{bucket}/{key}");
+            let footer_buf = footer::lazy_fetch_footer(&client, &bucket, &key).await?;
+            let reader = SerializedFileReader::new(footer_buf)?;
+            let meta = reader.metadata();
+
+            let columns: Option<Vec<String>> = cli
+                .columns
+                .as_ref()
+                .map(|s| s.split(',').map(|c| c.trim().to_string()).collect());
+
+            if cli.json {
+                schema::emit_json_from_meta(meta, &s3_url, columns.as_deref())?;
+            } else {
+                schema::emit_text_from_meta(meta, columns.as_deref())?;
+            }
+        }
+        S3Path::Prefix { bucket, prefix } => {
+            list::run_listing(&client, &bucket, &prefix, cli.json, cli.quiet).await?;
+        }
+    }
+
+    Ok(())
 }
