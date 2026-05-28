@@ -24,7 +24,7 @@ use std::path::PathBuf;
 )]
 pub struct Cli {
     #[arg(index = 1, help = "Path to a .parquet file or directory to inspect")]
-    pub path: PathBuf,
+    pub path: String,
 
     #[arg(
         index = 2,
@@ -141,7 +141,8 @@ fn validate_sample(s: &str) -> std::result::Result<u64, String> {
     }
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::try_parse().unwrap_or_else(|e| {
         let code = match e.kind() {
             clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion => 0,
@@ -151,6 +152,37 @@ fn main() -> Result<()> {
         e.print().unwrap();
         std::process::exit(code);
     });
+
+    if cli.path.starts_with("s3://") {
+        if cli.diff {
+            eprintln!("pqls: --diff does not support s3:// paths");
+            std::process::exit(2);
+        }
+        for (active, flag) in [
+            (cli.csv,               "--csv"),
+            (cli.ndjson,            "--ndjson"),
+            (cli.kv_meta,           "--kv-meta"),
+            (cli.check,             "--check"),
+            (cli.partition_stats,   "--partition-stats"),
+            (cli.scan_stats,        "--scan-stats"),
+            (cli.sample.is_some(),  "--sample"),
+            (cli.head.is_some(),    "--head"),
+            (cli.columns.is_some(), "--columns"),
+        ] {
+            if active {
+                eprintln!("pqls: {flag} is not supported for S3 paths");
+                std::process::exit(2);
+            }
+        }
+
+        let s3_path = s3::S3Path::parse(&cli.path).unwrap_or_else(|e| {
+            eprintln!("pqls: {e}");
+            std::process::exit(2);
+        });
+
+        s3::run_s3_path(s3_path, &cli).await?;
+        return Ok(());
+    }
 
     if cli.diff && cli.path_b.is_none() {
         eprintln!("error: --diff requires two path arguments: pqls --diff A.parquet B.parquet");
@@ -188,9 +220,11 @@ fn main() -> Result<()> {
         .as_ref()
         .map(|s| s.split(',').map(|c| c.trim().to_string()).collect());
 
+    let local_path = PathBuf::from(&cli.path);
+
     if cli.diff {
         let path_b = cli.path_b.as_ref().unwrap();
-        let outcome = diff::diff_schemas(&cli.path, path_b).unwrap_or_else(|e| {
+        let outcome = diff::diff_schemas(&local_path, path_b).unwrap_or_else(|e| {
             eprintln!("error: {e}");
             std::process::exit(1);
         });
@@ -205,28 +239,28 @@ fn main() -> Result<()> {
         }
         std::process::exit(if identical { 0 } else { 1 });
     } else if cli.csv {
-        csv_dump::dump_csv(&cli.path, cli.head, cli.sample, columns)?;
+        csv_dump::dump_csv(&local_path, cli.head, cli.sample, columns)?;
     } else if cli.ndjson {
-        ndjson_dump::dump_ndjson(&cli.path, cli.head, cli.sample, columns)?;
+        ndjson_dump::dump_ndjson(&local_path, cli.head, cli.sample, columns)?;
     } else if cli.schema && cli.json {
-        validate_columns_for_schema(&cli.path, columns.as_deref());
-        schema::emit_json(&cli.path, columns.as_deref())?;
+        validate_columns_for_schema(&local_path, columns.as_deref());
+        schema::emit_json(&local_path, columns.as_deref())?;
     } else if cli.schema {
-        validate_columns_for_schema(&cli.path, columns.as_deref());
-        schema::emit_text(&cli.path, columns.as_deref())?;
+        validate_columns_for_schema(&local_path, columns.as_deref());
+        schema::emit_text(&local_path, columns.as_deref())?;
     } else if cli.kv_meta && cli.json {
-        kv_meta::emit_json(&cli.path)?;
+        kv_meta::emit_json(&local_path)?;
     } else if cli.kv_meta {
-        kv_meta::emit_text(&cli.path)?;
+        kv_meta::emit_text(&local_path)?;
     } else if cli.partition_stats {
-        dir_mode::partition_stats(&cli.path, cli.json)?;
+        dir_mode::partition_stats(&local_path, cli.json)?;
     } else if cli.check {
-        match check::check_file(&cli.path, cli.deep)? {
+        match check::check_file(&local_path, cli.deep)? {
             check::CheckOutcome::Valid => {
                 if cli.json {
                     println!(
                         "{}",
-                        serde_json::json!({"status":"ok","file":cli.path.display().to_string()})
+                        serde_json::json!({"status":"ok","file":local_path.display().to_string()})
                     );
                 }
             }
@@ -241,10 +275,10 @@ fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
-    } else if cli.path.is_dir() {
-        dir_mode::list_directory(&cli.path, cli.detail, cli.recursive, cli.quiet)?;
+    } else if local_path.is_dir() {
+        dir_mode::list_directory(&local_path, cli.detail, cli.recursive, cli.quiet)?;
     } else {
-        inspect::inspect_file(&cli.path, cli.detail, cli.scan_stats, cli.quiet, columns)?;
+        inspect::inspect_file(&local_path, cli.detail, cli.scan_stats, cli.quiet, columns)?;
     }
 
     Ok(())
