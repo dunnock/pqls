@@ -5,6 +5,7 @@ mod dir_mode;
 mod inspect;
 mod kv_meta;
 mod ndjson_dump;
+mod s3;
 mod sample;
 mod schema;
 #[cfg(test)]

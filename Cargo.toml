@@ -13,6 +13,10 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
+aws-config           = { version = "1.8",  features = ["behavior-version-latest"] }
+aws-credential-types = "1.2"
+aws-sdk-s3           = { version = "1.78", features = [] }
+tokio                = { version = "1",    features = ["rt-multi-thread", "macros"] }
 arrow-array = "54"
 arrow-ipc = "54"
 base64 = "0.22"
