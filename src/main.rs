@@ -20,7 +20,7 @@ use std::path::PathBuf;
     name = "pqls",
     version,
     about = "Inspect Apache Parquet files",
-    long_about = "Inspect Apache Parquet files\n\nExamples:\n  pqls foo.parquet                       # inspect\n  pqls --schema --json foo.parquet       # JSON schema for agents\n  pqls --ndjson --sample 100 foo.parquet # 100 random rows as NDJSON\n  pqls --csv --columns id,ts foo.parquet # project two columns to CSV\n  pqls --kv-meta foo.parquet             # key-value metadata\n  pqls -r /data/events/                  # list partitioned dataset"
+    long_about = "Inspect Apache Parquet files\n\nExamples:\n  pqls foo.parquet                       # inspect\n  pqls --schema --json foo.parquet       # JSON schema for agents\n  pqls --ndjson --sample 100 foo.parquet # 100 random rows as NDJSON\n  pqls --csv --columns id,ts foo.parquet # project two columns to CSV\n  pqls --kv-meta foo.parquet             # key-value metadata\n  pqls -r /data/events/                  # list partitioned dataset\n  pqls s3://bucket/events/2024/          # list S3 prefix with schemas"
 )]
 pub struct Cli {
     #[arg(index = 1, help = "Path to a .parquet file or directory to inspect")]
