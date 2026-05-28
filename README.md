@@ -205,6 +205,50 @@ pqls does not require hugepages, elevated privileges, or any kernel tuning.
 crates.io automatically on tag push. Add the secret once in the GitHub repo settings
 under *Settings → Secrets and variables → Actions* with the name `CRATES_IO_TOKEN`.
 
+## S3 paths
+
+pqls accepts `s3://bucket/key` and `s3://bucket/prefix/` paths directly.
+
+```sh
+# inspect schema of a single S3 object (no full download)
+pqls s3://my-bucket/events/2024/data.parquet
+
+# JSON schema for agents / pipelines
+pqls --schema --json s3://my-bucket/events/2024/data.parquet
+
+# list all .parquet files under a prefix with brief schema per file
+pqls s3://my-bucket/events/2024/
+
+# machine-readable listing
+pqls --json s3://my-bucket/events/2024/
+```
+
+### AWS auth
+
+pqls uses the standard AWS credential provider chain — no new CLI flags.
+Set credentials via environment variables, `~/.aws/credentials`, an IAM
+instance role, or SSO:
+
+```sh
+# env vars
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_REGION=us-east-1
+
+# named profile
+export AWS_PROFILE=my-profile
+
+# IAM role / ECS task role / IRSA — no config needed
+```
+
+### Trade-offs
+
+- Schema inspection uses S3 range gets (last 64 KiB) — no whole-file
+  download.
+- No row data access over S3 (`--csv`, `--ndjson` are not supported for
+  S3 paths).
+- No local cache — every `pqls s3://...` issues fresh range gets.
+
 ## Releasing
 
 ```sh

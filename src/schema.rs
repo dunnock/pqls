@@ -155,3 +155,77 @@ pub fn emit_json(path: &Path, columns: Option<&[String]>) -> Result<()> {
 
     Ok(())
 }
+
+/// Like `emit_text` but operates on already-loaded metadata (e.g. from an S3 footer fetch).
+pub fn emit_text_from_meta(
+    meta: &parquet::file::metadata::ParquetMetaData,
+    columns: Option<&[String]>,
+) -> Result<()> {
+    let schema_descr = meta.file_metadata().schema_descr();
+    for i in 0..schema_descr.num_columns() {
+        let col = schema_descr.column(i);
+        if let Some(cols) = columns {
+            if !cols.iter().any(|c| c == col.name()) {
+                continue;
+            }
+        }
+        match get_logical_type_str(&col) {
+            Some(lt) => println!("{} {:?} {}", col.name(), col.physical_type(), lt),
+            None => println!("{} {:?}", col.name(), col.physical_type()),
+        }
+    }
+    Ok(())
+}
+
+/// Like `emit_json` but operates on already-loaded metadata.
+/// `source` is used in place of the local file path (e.g. an S3 URL).
+pub fn emit_json_from_meta(
+    meta: &parquet::file::metadata::ParquetMetaData,
+    source: &str,
+    columns: Option<&[String]>,
+) -> Result<()> {
+    let file_meta = meta.file_metadata();
+    let schema_descr = file_meta.schema_descr();
+
+    let mut fields = Vec::new();
+    for i in 0..schema_descr.num_columns() {
+        let col = schema_descr.column(i);
+        if let Some(cols) = columns {
+            if !cols.iter().any(|c| c == col.name()) {
+                continue;
+            }
+        }
+        let physical_type = format!("{:?}", col.physical_type());
+        let logical_type = get_logical_type_str(&col);
+        let basic_info = col.self_type().get_basic_info();
+        let repetition = if basic_info.has_repetition() {
+            match basic_info.repetition() {
+                Repetition::REQUIRED => "REQUIRED",
+                Repetition::OPTIONAL => "OPTIONAL",
+                Repetition::REPEATED => "REPEATED",
+            }
+            .to_string()
+        } else {
+            "REQUIRED".to_string()
+        };
+        fields.push(FieldJson {
+            index: i,
+            name: col.name().to_string(),
+            physical_type,
+            logical_type,
+            repetition,
+        });
+    }
+
+    let schema_json = SchemaJson {
+        file: source.to_string(),
+        num_rows: file_meta.num_rows(),
+        num_row_groups: meta.num_row_groups(),
+        created_by: file_meta.created_by().map(|s| s.to_string()),
+        fields,
+    };
+
+    serde_json::to_writer_pretty(stdout(), &schema_json)?;
+    println!();
+    Ok(())
+}
